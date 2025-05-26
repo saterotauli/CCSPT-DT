@@ -1,0 +1,89 @@
+.frag-table-container {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.frag-table {
+  border-collapse: collapse;
+  margin-left: auto;
+  margin-right: auto;
+  width: auto;
+  min-width: 700px;
+  table-layout: auto;
+}
+
+.frag-table th, .frag-table td {
+  border: 1px solid #ccc;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.frag-table th.c-guid, .frag-table td.c-guid { min-width: 130px; }
+.frag-table th.c-codi, .frag-table td.c-codi { min-width: 90px; max-width: 120px; }
+.frag-table th.c-edifici, .frag-table td.c-edifici { min-width: 60px; max-width: 90px; }
+.frag-table th.c-planta, .frag-table td.c-planta { min-width: 50px; max-width: 70px; }
+.frag-table th.c-centre_cost, .frag-table td.c-centre_cost { min-width: 60px; max-width: 80px; }
+.frag-table th.c-habitacioid, .frag-table td.c-habitacioid { min-width: 60px; max-width: 90px; }
+.frag-table th.c-area, .frag-table td.c-area { min-width: 60px; max-width: 80px; }
+
+.frag-table th {
+  font-weight: bold;
+}
+
+.frag-table input[type="text"],
+.frag-table input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background-color: transparent;
+  border: none;
+  outline: none;
+  padding: 4px;
+  font: inherit;
+}
+
+/* Restrict input width for specific columns */
+.frag-table td.c-edifici input {
+  max-width: 48px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+}
+.frag-table td.c-planta input {
+  max-width: 40px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+}
+.frag-table td.c-centre_cost input {
+  max-width: 70px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+
+}
+.frag-table td.c-habitacioid input {
+  max-width: 50px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+}
+
+.frag-table .cell-empty {
+  background-color: #ffe6e6;
+}
+
+.frag-table .cell-readonly {
+  background-color: #f9f9f9;
+}
+
+.frag-table .cell-codi-duplicate {
+  background-color: #ffe6e6;
+}
+
+.frag-table .cell-noneditable {
+  background-color: #f5f5f5;
+}

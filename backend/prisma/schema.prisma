@@ -1,0 +1,85 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "patrimoni"]
+}
+
+model Usuario {
+  id       Int    @id @default(autoincrement())
+  nombre   String
+  email    String @unique
+  password String
+  rol      Rol    @default(CONSULTOR)
+
+  @@schema("public")
+}
+
+enum Rol {
+  ADMIN
+  EDITOR
+  CONSULTOR
+
+  @@schema("public")
+}
+
+model ifcbuilding {
+  guid String @id
+  nom  String
+  codi String
+
+  @@map("ifcbuilding")
+  @@schema("patrimoni")
+}
+
+model ifcspace {
+  guid String @id
+  codi String? @default(dbgenerated())
+  dispositiu String
+  edifici String
+  planta String
+  departament String
+  id String
+  centre_cost String
+  area Float
+
+  @@map("ifcspace")
+  @@schema("patrimoni")
+}
+
+model actius {
+  id       Int      @id @default(autoincrement())
+  guid     String   @unique
+  tipus    String
+  subtipus String?
+  ubicacio String?
+
+  ifcdoor  ifcdoor?
+
+  @@map("actius")
+  @@schema("patrimoni")
+}
+
+model ifcdoor {
+  actiu_id  Int     @id
+  from_room String?
+  to_room   String?
+
+  actiu     actius  @relation(fields: [actiu_id], references: [id], onDelete: Cascade)
+  fire      ifcdoor_fire?
+
+  @@map("ifcdoor")
+  @@schema("patrimoni")
+}
+
+model ifcdoor_fire {
+  ifcdoor_id Int    @id
+  numero     String?
+  ifcdoor    ifcdoor @relation(fields: [ifcdoor_id], references: [actiu_id], onDelete: Cascade)
+  @@map("ifcdoor_fire")
+  @@schema("patrimoni")
+}
