@@ -38,7 +38,8 @@ export const updateActius = async (req: Request, res: Response) => {
     if (actius.length === 0) {
       return res.json({ message: 'No se recibieron actius.' });
     }
-    console.log('Array de actius recibido:', JSON.stringify(actius, null, 2));
+    //console.log('Array de actius recibido:', JSON.stringify(actius, null, 2));
+    
     // Inserción/actualización masiva
     for (const actiu of actius) {
       // Validar que tenga guid o actiu_id
@@ -51,20 +52,24 @@ export const updateActius = async (req: Request, res: Response) => {
         console.log(`Usando actiu_id como guid para actiu: ${actiu.actiu_id}`);
       }
       // Log para depuración: mostrar el actiu antes del upsert
-      console.log('Intentando upsert del actiu:', JSON.stringify(actiu, null, 2));
+      //console.log('Intentando upsert del actiu:', JSON.stringify(actiu, null, 2));
       // Upsert actiu principal
       const upsertedActiu = await prisma.actius.upsert({
         where: { guid: actiu.guid },
         update: {
           tipus: actiu.tipus,
           subtipus: actiu.subtipus,
-          ubicacio: actiu.ubicacio,
+          edifici: actiu.edifici,
+          planta: actiu.planta,
+          ubicacio: actiu.ubicacio, // Solo CSPT_FM_HabitacioID
         },
         create: {
           guid: actiu.guid,
           tipus: actiu.tipus,
           subtipus: actiu.subtipus,
-          ubicacio: actiu.ubicacio,
+          edifici: actiu.edifici,
+          planta: actiu.planta,
+          ubicacio: actiu.ubicacio, // Solo CSPT_FM_HabitacioID
         }
       });
       // Si es una puerta (IFCDOOR), upsert en ifcdoor
@@ -98,35 +103,59 @@ export const updateActius = async (req: Request, res: Response) => {
       }
     }
 
-    // Los elementos IfcSanitaryTerminal se suben a la tabla patrimoni.actius a través del array recibido en el body, no desde una tabla propia.
-
-    // Todos los elementos (puertas, sanitarios, etc.) deben venir en el array del body y se insertan/actualizan en patrimoni.actius.
-
-    // BORRADO selectivo: solo borrar los actius del edificio correspondiente que ya no existan en el array recibido
-    // Suponemos que todos los actius subidos pertenecen al mismo edificio (ubicacio: 'EDIFICIO-PLANTA-ESPACIO')
-    const edificio = actius[0]?.ubicacio?.substring(0, 3);
-    if (edificio) {
-      // Buscar todos los guids de actius en la BD de ese edificio
-      const actiusEnDB = await prisma.actius.findMany({
-        where: { ubicacio: { startsWith: edificio } },
-        select: { guid: true }
-      });
-      const guidsEnDB = actiusEnDB.map((a: any) => a.guid);
-      const guidsEnviados = actius.map((a: any) => a.guid);
-      const guidsABorrar = guidsEnDB.filter((guid: string) => !guidsEnviados.includes(guid));
-      if (guidsABorrar.length > 0) {
-        await prisma.actius.deleteMany({
-          where: {
-            guid: { in: guidsABorrar },
-            ubicacio: { startsWith: edificio }
-          }
+    // BORRADO SELECTIVO: solo borra los actius del edificio cargado cuyo GUID no esté en el array recibido
+    if (req.body.confirmDelete && actius.length > 0) {
+      const edificio = actius[0]?.edifici;
+      if (typeof edificio === 'string' && edificio.length > 0) {
+        const guidsEnviados = actius.map((a: any) => a.guid);
+        console.log(`Edificio cargado: ${edificio}`);
+        console.log('GUIDs enviados:', guidsEnviados);
+        // Obtener todos los actius de ese edificio en la BD
+        const actiusEnDB = await prisma.actius.findMany({
+          where: { edifici: edificio },
+          select: { guid: true, id: true }
         });
+        const guidsEnDB = actiusEnDB.map((a: any) => a.guid);
+        console.log('GUIDs en BD:', guidsEnDB);
+        // Determinar qué GUIDs hay que borrar
+        const guidsABorrar = guidsEnDB.filter((guid: string) => !guidsEnviados.includes(guid));
+        if (guidsABorrar.length > 0) {
+          console.log(`Borrando ${guidsABorrar.length} actius del edificio ${edificio} con GUIDs:`, guidsABorrar);
+          // Obtener los IDs de los actius que vamos a borrar
+          const actiusABorrar = await prisma.actius.findMany({
+            where: { guid: { in: guidsABorrar as string[] }, edifici: edificio },
+            select: { id: true, guid: true }
+          });
+          const idsABorrar = actiusABorrar.map(a => a.id);
+          console.log('IDs de actius a borrar:', idsABorrar);
+          // Borrar primero las referencias en ifcdoor_fire
+          const deletedFireDoors = await prisma.ifcdoor_fire.deleteMany({
+            where: { ifcdoor_id: { in: idsABorrar } }
+          });
+          console.log(`Borradas ${deletedFireDoors.count} puertas tallafoc`);
+          // Luego borrar las referencias en ifcdoor
+          const deletedDoors = await prisma.ifcdoor.deleteMany({
+            where: { actiu_id: { in: idsABorrar } }
+          });
+          console.log(`Borradas ${deletedDoors.count} puertas`);
+          // Finalmente borrar los actius principales
+          const deletedActius = await prisma.actius.deleteMany({
+            where: { guid: { in: guidsABorrar as string[] }, edifici: edificio }
+          });
+          console.log(`Borrados ${deletedActius.count} actius del edificio ${edificio}`);
+        } else {
+          console.log(`No hay actius para borrar en el edificio ${edificio}.`);
+        }
+      } else {
+        console.warn('No se encontró el campo edifici en los actius recibidos, no se realiza borrado selectivo.');
       }
+    } else if (req.body.confirmDelete) {
+      console.warn('confirmDelete es true pero no hay actius definidos.');
     }
 
     res.json({ message: 'Actius actualizados correctamente' });
   } catch (err: any) {
-    console.error(err);
+    console.error('Error en updateActius:', err);
     res.status(500).json({ error: 'Error al actualizar los actius', details: err.message });
   }
 };
@@ -158,18 +187,21 @@ export const summaryActius = async (req: Request, res: Response) => {
     console.log(`Llegaron ${actius.length} actius`);
     // Buscar todos los guids en la tabla actius
     const guidsNuevos = actius.map((a: any) => a.guid);
-    const actiusDB: any[] = await prisma.actius.findMany({ select: { guid: true, tipus: true, subtipus: true, ubicacio: true } });
-    console.log(`Hay ${actiusDB.length} actius en la base de datos`);
-    const guidsDB = actiusDB.map((a: any) => a.guid);
+    // --- FILTRADO POR EDIFICIO ---
+    const edificio = actius[0]?.edifici;
+    const actiusDB: any[] = await prisma.actius.findMany({ select: { guid: true, tipus: true, subtipus: true, ubicacio: true, edifici: true } });
+    const actiusDBEdificio = edificio ? actiusDB.filter((a: any) => a.edifici === edificio) : actiusDB;
+    console.log(`Hay ${actiusDBEdificio.length} actius en la base de datos para el edificio ${edificio}`);
+    const guidsDB = actiusDBEdificio.map((a: any) => a.guid);
     // Nuevos: están en el array recibido pero no en la base de datos
     const nuevos = actius.filter((a: any) => !guidsDB.includes(a.guid)).length;
     console.log(`Nuevos: ${nuevos} ejemplos: ${actius.filter((a: any) => !guidsDB.includes(a.guid)).slice(0, 5).map((a: any) => a.guid)}`);
-    // Borrados: están en la base de datos pero no en el array recibido
-    const borrados = actiusDB.filter((a: any) => !guidsNuevos.includes(a.guid)).length;
-    console.log(`Borrados: ${borrados} ejemplos: ${actiusDB.filter((a: any) => !guidsNuevos.includes(a.guid)).slice(0, 5).map((a: any) => a.guid)}`);
+    // Borrados: están en la base de datos (DEL EDIFICIO) pero no en el array recibido
+    const borrados = actiusDBEdificio.filter((a: any) => !guidsNuevos.includes(a.guid)).length;
+    console.log(`Borrados: ${borrados} ejemplos: ${actiusDBEdificio.filter((a: any) => !guidsNuevos.includes(a.guid)).slice(0, 5).map((a: any) => a.guid)}`);
     // Modificados: existen en ambos pero tienen diferencias de campos relevantes
     const modificadosArr = actius.filter((a: any) => {
-      const db = actiusDB.find((x: any) => x.guid === a.guid);
+      const db = actiusDBEdificio.find((x: any) => x.guid === a.guid);
       if (!db) return false;
       return (
         db.tipus !== a.tipus ||
@@ -179,7 +211,7 @@ export const summaryActius = async (req: Request, res: Response) => {
     }).map((a: any) => a.guid);
     const modificados = modificadosArr.length;
     console.log(`Modificados: ${modificados} ejemplos: ${actius.filter((a: any) => {
-      const db = actiusDB.find((x: any) => x.guid === a.guid);
+      const db = actiusDBEdificio.find((x: any) => x.guid === a.guid);
       if (!db) return false;
       return (
         db.tipus !== a.tipus ||

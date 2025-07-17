@@ -84,6 +84,8 @@ export const updateHabitacions = async (req: Request, res: Response) => {
     if (ifcSpaces.length === 0) {
       return res.status(400).json({ error: 'El array de ifcSpaces está vacío.' });
     }
+    // LOG: Mostrar el array recibido para depuración
+    console.log('Recibido en backend (ifcSpaces):', ifcSpaces);
     // Agrupar habitaciones subidas por edificio
     const edificios = Array.from(new Set(ifcSpaces.map((h: any) => h.edifici)));
     let habitacionesAEliminar: any[] = [];
@@ -120,6 +122,8 @@ export const updateHabitacions = async (req: Request, res: Response) => {
     }
     // Insertar o actualizar habitaciones nuevas/actualizadas
     for (const h of ifcSpaces) {
+      // LOG: Mostrar cada habitación que se va a guardar/actualizar
+      console.log('Guardando/actualizando habitación:', h);
       await prisma.$executeRaw`
         INSERT INTO "patrimoni"."ifcspace" (
           guid, dispositiu, edifici, planta, departament, id, centre_cost, area

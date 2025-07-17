@@ -69,6 +69,9 @@ const FragImporterPage: React.FC = () => {
       setStatus("Modelo cargado. Extrayendo ifcSpaces...");
       // 3. Obtener los espacios (IFCSPACE)
       const spaces = await model.getItemsOfCategory("IFCSPACE");
+      // DEBUG: Mostrar todos los GUIDs de los espacios IFCSPACE extraídos
+      console.log('[FragImporter] IFCSPACE items:', spaces.map((s:any) => s.GlobalId || s.globalId || s.guid || (s._guid && s._guid.value)));
+
 
       // 3b. Obtener las puertas (IFCDOOR)
       const doors = await model.getItemsOfCategory("IFCDOOR");
@@ -85,41 +88,62 @@ const FragImporterPage: React.FC = () => {
 
       // Procesar y mostrar solo guid, tipus y subtipus para puertas
       const puertasProcesadas = doorData.map((obj: any) => {
-  let guid = obj.GlobalId || obj.globalId || obj.guid;
-  if (!guid && obj.IsDefinedBy) {
-    const psetWithGuid = obj.IsDefinedBy.find((pset: any) => pset._guid && pset._guid.value);
-    if (psetWithGuid) guid = psetWithGuid._guid.value;
-  }
-  const tipus = "IFCDOOR";
-  let subtipus = undefined;
-  let ubicacio = undefined;
-  let from_room = undefined;
-  let to_room = undefined;
-  let marca = undefined;
-
-  if (obj.IsDefinedBy) {
-    for (const pset of obj.IsDefinedBy) {
-      if (Array.isArray(pset.HasProperties)) {
-        for (const prop of pset.HasProperties) {
-          const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
-          const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
-          if (!subtipus && (propName === 'CSPT_FM_Subtipus' || propName === 'subtipus')) subtipus = propValue;
-          if (!ubicacio && (propName === 'CSPT_FM_HabitacioCodi' || propName === 'ubicacio')) ubicacio = propValue;
-          if (!from_room && propName === 'FromRoom') from_room = propValue;
-          if (!to_room && propName === 'ToRoom') to_room = propValue;
-          if (!marca && propName === 'Marca') marca = propValue;
+        let guid = '';
+        let edifici = '';
+        let planta = '';
+        // 1. Intenta usar el GlobalId directo
+        if (obj.GlobalId) {
+          guid = obj.GlobalId;
+        } else if (obj.globalId) {
+          guid = obj.globalId;
+        } else if (obj.guid) {
+          guid = obj.guid;
+        } else if (obj._guid && obj._guid.value) {
+          guid = obj._guid.value;
         }
-      }
-    }
-  }
+        // 2. Si no, busca en los psets el IfcGUID y otros atributos
+        const psets = obj.IsDefinedBy as any[] | undefined;
+        if (!guid && psets && Array.isArray(psets)) {
+          const psetWithGuid = psets.find(pset => pset._guid && pset._guid.value);
+          if (psetWithGuid) {
+            guid = psetWithGuid._guid.value;
+          }
+        }
+        const tipus = "IFCDOOR";
+        let subtipus = undefined;
+        let ubicacio = undefined;
+        let from_room = undefined;
+        let to_room = undefined;
+        let marca = undefined;
 
-  // Si quieres buscar en IsTypedBy, como en sanitarios, añade aquí la lógica
-
-  return { guid, tipus, subtipus, ubicacio, from_room, to_room, marca };
-});
+        if (psets && Array.isArray(psets)) {
+          for (const pset of psets) {
+            if (Array.isArray(pset.HasProperties)) {
+              for (const prop of pset.HasProperties) {
+                const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
+                const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
+                if (!subtipus && (propName === 'CSPT_FM_Subtipus' || propName === 'subtipus')) subtipus = propValue;
+                if (!ubicacio && (propName === 'CSPT_FM_HabitacioCodi' || propName === 'ubicacio')) ubicacio = propValue;
+                if (!edifici && propName === 'CSPT_FM_HabitacioEdifici') edifici = propValue;
+                if (!planta && propName === 'CSPT_FM_HabitacioPlanta') planta = propValue;
+                if (!from_room && propName === 'FromRoom') from_room = propValue;
+                if (!to_room && propName === 'ToRoom') to_room = propValue;
+                if (!marca && propName === 'Marca') marca = propValue;
+              }
+            }
+          }
+        }
+        // DEBUG: Mostrar el guid extraído para cada puerta
+        if (!guid || typeof guid !== 'string' || guid.length !== 22) {
+          console.warn('[FragImporter] GUID NO VÁLIDO extraído para puerta:', { guid, obj });
+        } else {
+          console.log('[FragImporter] GUID extraído para puerta:', guid);
+        }
+        return { guid, tipus, subtipus, ubicacio, edifici, planta, from_room, to_room, marca };
+      });
 
 // Para actius
-const actiusPuertas = puertasProcesadas.map(({ guid, tipus, subtipus, ubicacio }) => ({ guid, tipus, subtipus, ubicacio }));
+const actiusPuertas = puertasProcesadas.map(({ guid, tipus, subtipus, ubicacio, edifici, planta }) => ({ guid, tipus, subtipus, ubicacio, edifici, planta }));
 
 // Para ifcdoor
 const ifcDoors = puertasProcesadas.map(({ guid, from_room, to_room }) => ({ guid, from_room, to_room }));
@@ -146,16 +170,32 @@ const ifcDoorFire = puertasProcesadas
         }
       });
       const sanitariosProcesados = sanitaryData.map((obj: any) => {
-        let guid = obj.GlobalId || obj.globalId || obj.guid;
-        if (!guid && obj.IsDefinedBy) {
-          const psetWithGuid = obj.IsDefinedBy.find((pset: any) => pset._guid && pset._guid.value);
-          if (psetWithGuid) guid = psetWithGuid._guid.value;
+        let guid = '';
+        let edifici = '';
+        let planta = '';
+        // 1. Intenta usar el GlobalId directo
+        if (obj.GlobalId) {
+          guid = obj.GlobalId;
+        } else if (obj.globalId) {
+          guid = obj.globalId;
+        } else if (obj.guid) {
+          guid = obj.guid;
+        } else if (obj._guid && obj._guid.value) {
+          guid = obj._guid.value;
+        }
+        // 2. Si no, busca en los psets el IfcGUID y otros atributos
+        const psets = obj.IsDefinedBy as any[] | undefined;
+        if (!guid && psets && Array.isArray(psets)) {
+          const psetWithGuid = psets.find(pset => pset._guid && pset._guid.value);
+          if (psetWithGuid) {
+            guid = psetWithGuid._guid.value;
+          }
         }
         const tipus = "IFCSANITARYTERMINAL";
         let subtipus = undefined;
         let ubicacio = undefined;
-        if (obj.IsDefinedBy) {
-          for (const pset of obj.IsDefinedBy) {
+        if (psets && Array.isArray(psets)) {
+          for (const pset of psets) {
             if (Array.isArray(pset.HasProperties)) {
               for (const prop of pset.HasProperties) {
                 const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
@@ -166,6 +206,8 @@ const ifcDoorFire = puertasProcesadas
                 if (propName === 'CSPT_FM_HabitacioCodi') {
                   ubicacio = propValue;
                 }
+                if (!edifici && propName === 'CSPT_FM_HabitacioEdifici') edifici = propValue;
+                if (!planta && propName === 'CSPT_FM_HabitacioPlanta') planta = propValue;
               }
             }
           }
@@ -182,11 +224,19 @@ const ifcDoorFire = puertasProcesadas
                 if (propName === 'CSPT_FM_HabitacioCodi' && !ubicacio) {
                   ubicacio = propValue;
                 }
+                if (!edifici && propName === 'CSPT_FM_HabitacioEdifici') edifici = propValue;
+                if (!planta && propName === 'CSPT_FM_HabitacioPlanta') planta = propValue;
               }
             }
           }
         }
-        return { guid, tipus, subtipus, ubicacio };
+        // DEBUG: Mostrar el guid extraído para cada sanitario
+        if (!guid || typeof guid !== 'string' || guid.length !== 22) {
+          console.warn('[FragImporter] GUID NO VÁLIDO extraído para sanitario:', { guid, obj });
+        } else {
+          console.log('[FragImporter] GUID extraído para sanitario:', guid);
+        }
+        return { guid, tipus, subtipus, ubicacio, edifici, planta };
       });
       
       console.log('PUERTAS PROCESADAS:', puertasProcesadas);
@@ -194,6 +244,7 @@ const ifcDoorFire = puertasProcesadas
       
       // Unir puertas y sanitarios 
       const allActius = [...puertasProcesadas, ...sanitariosProcesados];
+      console.log('[FragImporter] Actius que se van a subir:', allActius);
       setActiusProcesados(allActius);
       
       // 4. Procesar espacios y extraer atributos
@@ -214,13 +265,25 @@ const ifcDoorFire = puertasProcesadas
         let centre_cost = '';
         let guid = '';
         let area: number | undefined = undefined;
+        // 1. Intenta usar el GlobalId directo
+        if (item.GlobalId) {
+          guid = item.GlobalId;
+        } else if (item.globalId) {
+          guid = item.globalId;
+        } else if (item.guid) {
+          guid = item.guid;
+        } else if (item._guid && item._guid.value) {
+          guid = item._guid.value;
+        }
+        // 2. Si no, busca en los psets el IfcGUID
         const psets = item.IsDefinedBy as any[] | undefined;
-        if (psets && Array.isArray(psets)) {
-          // Buscar Guid en _guid.value del primer pset que lo tenga
+        if (!guid && psets && Array.isArray(psets)) {
           const psetWithGuid = psets.find(pset => pset._guid && pset._guid.value);
           if (psetWithGuid) {
             guid = psetWithGuid._guid.value;
           }
+        }
+        if (psets && Array.isArray(psets)) {
           for (const pset of psets) {
             const hasProperties = pset.HasProperties;
             if (Array.isArray(hasProperties)) {
@@ -242,6 +305,12 @@ const ifcDoorFire = puertasProcesadas
             }
           }
         }
+        // DEBUG: Mostrar el guid extraído para cada espacio
+        if (!guid || typeof guid !== 'string' || guid.length !== 22) {
+          console.warn('[FragImporter] GUID NO VÁLIDO extraído para espacio:', { Name: item.Name?.value, guid, item });
+        } else {
+          console.log('[FragImporter] GUID extraído para espacio:', guid);
+        }
         return {
           codi: item.Name?.value || '',
           dispositiu,
@@ -251,7 +320,7 @@ const ifcDoorFire = puertasProcesadas
           id,
           centre_cost,
           guid,
-          area
+          area,
         };
       });
       //console.log("Habitaciones extraídas del FRAG:", processedSpaces);
@@ -262,47 +331,7 @@ const ifcDoorFire = puertasProcesadas
     }
   };
 
-  // También agrega esta función de diagnóstico antes de handleConfirmUpdate:
 
-async function testHabitacionesAPI() {
-  try {
-    console.log('Probando endpoint de habitaciones...');
-    
-    // Prueba con un objeto simple
-    const testData = [{
-      guid: 'test-guid-123',
-      codi: 'TEST-001',
-      edifici: 'Edificio Test',
-      planta: '1',
-      departament: 'Test Dept',
-      dispositiu: 'Test Device',
-      id: 'TEST001',
-      centre_cost: '1000',
-      area: 25.5
-    }];
-
-    const response = await fetch('/api/ifcspace', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(testData)
-    });
-
-    console.log('Test response status:', response.status);
-    const responseText = await response.text();
-    console.log('Test response:', responseText);
-
-    if (!response.ok) {
-      console.error('Test failed:', responseText);
-    } else {
-      console.log('Test successful');
-    }
-  } catch (error) {
-    console.error('Test error:', error);
-  }
-}
 
 // Reemplaza la función handleConfirmUpdate con esta versión corregida:
 

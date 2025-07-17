@@ -56,7 +56,7 @@ function normalizaPregunta(pregunta: string): string {
 
 export const consultaNatural = async (req: Request, res: Response) => {
   try {
-    const { pregunta } = req.body;
+    const { pregunta, edificio } = req.body;
     if (!pregunta) {
       return res.status(400).json({ error: 'La consulta es obligatoria.' });
     }
@@ -64,8 +64,16 @@ export const consultaNatural = async (req: Request, res: Response) => {
     // Normalizar la pregunta usando el diccionario de subtipus
     const preguntaNormalizada = normalizaPregunta(pregunta);
 
-    // Construir el prompt final
-    const prompt = `${sqlAssistantPrompt}\n\n${preguntaNormalizada}`;
+    let promptFinal;
+    if (edificio) {
+      const instruccion = `Contexto: El usuario ha solicitado filtrar por el edificio '${edificio}'. Aplica SIEMPRE la condición de filtrado correcta: para consultas a 'actius', usa "LEFT(ubicacio, 3) = '${edificio}'"; para consultas a 'ifcspace', usa "edifici = '${edificio}'".`;
+      const preguntaModificada = `${preguntaNormalizada} (del edificio ${edificio})`;
+      promptFinal = `${sqlAssistantPrompt}\n\n${instruccion}\nPregunta: ${preguntaModificada}`;
+    } else {
+      promptFinal = `${sqlAssistantPrompt}\n\nPregunta: ${preguntaNormalizada}`;
+    }
+
+    const prompt = promptFinal;
 
     // Obtener la consulta SQL desde OpenAI
     const sql = (await getOpenAICompletion(prompt)).trim();
@@ -87,8 +95,24 @@ export const consultaNatural = async (req: Request, res: Response) => {
       console.error('Error ejecutando la consulta SQL generada:', e);
       return res.status(400).json({ error: 'Error ejecutando la consulta SQL generada.', sql, details: (e as Error).message });
     }
+    // Asegura que cada fila tenga un campo 'guid' correcto para el frontend
+    let resultWithGuid = Array.isArray(result)
+      ? result.map((row: any) => {
+          let guid = row.GlobalId || row.globalid || row.guid;
+          // Si no hay campo, busca el primer valor tipo GUID IFC
+          if (!guid) {
+            for (const v of Object.values(row)) {
+              if (typeof v === 'string' && /^[A-Za-z0-9_$]{22}$/.test(v)) {
+                guid = v;
+                break;
+              }
+            }
+          }
+          return { ...row, guid };
+        })
+      : result;
     res.setHeader('Content-Type', 'application/json');
-    res.send(JSON.stringify({ sql, result }, replacerBigInt));
+    res.send(JSON.stringify({ sql, result: resultWithGuid }, replacerBigInt));
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ error: 'Error en la consulta', details: err.message });

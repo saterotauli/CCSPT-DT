@@ -1,8 +1,39 @@
+html, body {
+  height: 100vh; /* Base para que todo lo demás funcione con % */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Evita scrollbars innecesarias en el nivel más alto */
+  box-sizing: border-box;
+  background-color: #ffffffec; /* Mantenlo para depurar si algo sigue mal */
+}
+
+.app-container-flex {
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Ocupa toda la altura de #root */
+  width: 100%; /* Ocupa todo el ancho de #root */
+}
+
+.main-content {
+  flex: 1 1 0; /* Ocupa todo el espacio restante verticalmente */
+  overflow-y: auto; /* Permite scroll si el contenido de la página es más largo */
+  overflow-x: hidden;
+  display: flex; /* Para que VisorPage (que es flex item) se estire */
+  flex-direction: column; /* Para que VisorPage (que es flex item) se estire */
+}
+
+
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  /* text-align: center; -- Eliminado */
+  /* overflow: hidden; -- Eliminado */
+  /* max-width: 100vw; -- Eliminado */
+  /* width: 100vw; -- Eliminado (si estuviera) */
 }
 
 .logo {
