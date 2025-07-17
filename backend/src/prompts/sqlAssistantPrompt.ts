@@ -20,6 +20,10 @@ Pregunta: llistat de inoders de CQA
 Respuesta INCORRECTA: SELECT * FROM patrimoni.ifcspace WHERE edifici = 'CQA' AND dispositiu = 'InodorMonobloc';
 Respuesta CORRECTA: SELECT * FROM patrimoni.actius WHERE subtipus = 'InodorMonobloc' AND LEFT(ubicacio, 3) = 'CQA';
 
+Pregunta: llistat de portes de CQA
+Respuesta INCORRECTA: SELECT * FROM patrimoni.ifcspace WHERE edifici = 'CQA' AND dispositiu ILIKE '%porta%';
+Respuesta CORRECTA: SELECT * FROM patrimoni.actius WHERE tipus = 'IFCDOOR' AND LEFT(ubicacio, 3) = 'CQA';
+
 REGLA PARA LISTADOS COMPLETOS: Cuando se pida un "listado" o "llistat" de activos, SIEMPRE incluye estos campos:
 - De actius: tipus, subtipus, edifici, planta, ubicacio
 - Si hay JOIN con ifcdoor: from_room, to_room

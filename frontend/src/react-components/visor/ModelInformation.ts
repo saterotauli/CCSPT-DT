@@ -75,7 +75,7 @@ export function setupHighlight(
       _localId = null;
       handlers?.onItemDeselected?.();
     }
-    promises.push(fragments?.update(true));
+    promises.push(fragments?.core.update(true));
     Promise.all(promises);
   });
 
