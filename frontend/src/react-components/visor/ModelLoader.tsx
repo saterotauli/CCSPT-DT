@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from "react";
 import * as THREE from "three";
-import * as FRAGS from "@thatopen/fragments";
+
 import * as OBC from "@thatopen/components";
 import { setupHighlight } from "./ModelInformation";
+import FloorSelector from "./FloorSelector"; // Crearemos este componente después
 
 const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
-  const [fragments, setFragments] = useState<any>(null);
+
   const [world, setWorld] = useState<any>(null);
+  const [floors, setFloors] = useState<any[]>([]);
+    const [activeFloor, setActiveFloor] = useState<any | null>(null);
+  const [viewMode, setViewMode] = useState<'2D' | '3D'>('3D');
 
   useEffect(() => {
     const container = document.getElementById("viewer-container");
@@ -18,7 +22,6 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
 
     // Guarda referencias para limpieza
     let components: OBC.Components | null = null;
-    let fragments: FRAGS.FragmentsModels | null = null;
     let workerURL: string | null = null;
     let model: any = null;
     let resizeObserver: ResizeObserver | null = null;
@@ -32,6 +35,9 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         const worlds = components.get(OBC.Worlds);
         const worldInstance = worlds.create<OBC.SimpleScene, OBC.SimpleCamera, OBC.SimpleRenderer>();
 
+
+
+
         worldInstance.scene = new OBC.SimpleScene(components);
         worldInstance.scene.setup();
         worldInstance.scene.three.background = null;
@@ -41,7 +47,7 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         worldInstance.camera = new OBC.SimpleCamera(components);
         worldInstance.camera.controls.setLookAt(183, 11, -102, 27, -52, -11);
 
-        const fragmentBbox = components.get(OBC.BoundingBoxer);
+
 
         components.init();
 
@@ -73,7 +79,7 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         workerURL = URL.createObjectURL(workerFile);
         const fragmentsInstance = components.get(OBC.FragmentsManager);
         fragmentsInstance.init(workerURL);
-        setFragments(fragmentsInstance);
+
         setWorld(worldInstance);
         
         // Importante: Eventos de cámara para actualización del modelo
@@ -137,6 +143,23 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         updateRendererAndCamera();
 
         worldInstance.camera.controls.fitToSphere(sphere, true);
+
+        // Lógica para obtener los planos usando el Classifier
+        const classifier = components.get(OBC.Classifier);
+        await classifier.byIfcBuildingStorey({ classificationName: "Levels" });
+
+        const levelsClassification = classifier.list.get("Levels");
+        if (levelsClassification) {
+            const floorData = [];
+            for (const [name] of levelsClassification) {
+                floorData.push({
+                    Name: { value: name },
+                    expressID: name, // Usamos el nombre como ID único para React
+                });
+            }
+            setFloors(floorData);
+        }
+
         
 
         //target.loading = false;
@@ -157,7 +180,66 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
     };
   }, [buildingFile]);
 
-  return null;
+  const setFloorVisibility = async (floor: any | null, mode: '2D' | '3D') => {
+    if (!world) return;
+    const hider = world.components.get(OBC.Hider);
+    const camera = world.camera;
+
+    // Lógica para mostrar todo
+    if (floor === null) {
+      await hider.set(true);
+      setActiveFloor(null);
+      camera.controls.orbiting = true;
+      world.camera.projection.current = "Perspective";
+      await camera.controls.fitToSphere(world.scene.three, true);
+      return;
+    }
+
+    // Aislar el nivel seleccionado
+    const classifier = world.components.get(OBC.Classifier);
+    const levelsClassification = classifier.list.get("Levels");
+    if (!levelsClassification) return;
+
+    const group = levelsClassification.get(floor.Name.value);
+    if (!group) return;
+
+    const modelIdMap = await group.get();
+    const groupBoundingBox = await hider.isolate(modelIdMap);
+    setActiveFloor(floor);
+
+    // Ajustar la cámara según el modo
+    if (mode === '2D') {
+      camera.controls.orbiting = false;
+      world.camera.projection.current = "Orthographic";
+      const center = new THREE.Vector3();
+      groupBoundingBox.getCenter(center);
+      await camera.controls.setLookAt(center.x, center.y + 10, center.z, center.x, center.y, center.z, false);
+      await camera.controls.fitToSphere(groupBoundingBox, false);
+    } else {
+      camera.controls.orbiting = true;
+      world.camera.projection.current = "Perspective";
+      await camera.controls.fitToSphere(groupBoundingBox, true);
+    }
+  };
+
+  useEffect(() => {
+    if (activeFloor) {
+      setFloorVisibility(activeFloor, viewMode);
+    }
+  }, [viewMode]);
+
+  return (
+    <>
+      {world && (
+        <FloorSelector 
+          floors={floors} 
+          onFloorSelected={(floor) => setFloorVisibility(floor, viewMode)} 
+          currentMode={viewMode}
+          onViewModeChange={setViewMode}
+        />
+      )}
+    </>
+  );
 
 };
 
