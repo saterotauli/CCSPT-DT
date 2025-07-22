@@ -2,12 +2,10 @@ import React from 'react';
 
 interface FloorSelectorProps {
   floors: any[];
-  onFloorSelected: (floor: any | null) => void;
-  onViewModeChange: (mode: '2D' | '3D') => void;
-  currentMode: '2D' | '3D';
+  onViewSelected: (floor: any | null) => void;
 }
 
-const FloorSelector: React.FC<FloorSelectorProps> = ({ floors, onFloorSelected, onViewModeChange, currentMode }) => {
+const FloorSelector: React.FC<FloorSelectorProps> = ({ floors, onViewSelected }) => {
   const style: React.CSSProperties = {
     position: 'absolute',
     top: '80px',
@@ -24,28 +22,11 @@ const FloorSelector: React.FC<FloorSelectorProps> = ({ floors, onFloorSelected, 
 
   return (
     <div style={style}>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginBottom: '10px' }}>
-        <label style={{ cursor: 'pointer' }}>
-          <input
-            type="radio"
-            value="3D"
-            checked={currentMode === '3D'}
-            onChange={() => onViewModeChange('3D')}
-          /> 3D
-        </label>
-        <label style={{ cursor: 'pointer' }}>
-          <input
-            type="radio"
-            value="2D"
-            checked={currentMode === '2D'}
-            onChange={() => onViewModeChange('2D')}
-          /> 2D
-        </label>
-      </div>
-      <button onClick={() => onFloorSelected(null)}>Tot</button>
+      <h4 style={{ margin: '0 0 10px 0' }}>Views</h4>
+      <button onClick={() => onViewSelected(null)}>3D View</button>
       {floors.length > 0 ? (
         floors.map((floor) => (
-          <button key={floor.expressID} onClick={() => onFloorSelected(floor)}>
+          <button key={floor.expressID} onClick={() => onViewSelected(floor)}>
             {floor.Name?.value || `Nivel ${floor.expressID}`}
           </button>
         ))

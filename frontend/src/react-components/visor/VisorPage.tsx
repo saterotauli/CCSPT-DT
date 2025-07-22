@@ -4,11 +4,13 @@ import ConsultaBox from "./ConsultaBox";
 import "./visor3d.css";
 
 const buildings = [
+  { label: "RAC Advanced", value: "RAC", file: "CCSPT-RAC-M3D-AS.frag" },
+  { label: "That OPEN", value: "TOC", file: "CCSPT-TOC-M3D-AS.frag" },
   { label: "Albada", value: "ALB", file: "CCSPT-ALB-M3D-AS.frag" },
   { label: "CQA", value: "CQA", file: "CCSPT-CQA-M3D-AS.frag" },
   { label: "Mínimo", value: "MIN", file: "CCSPT-MIN-M3D-AS.frag" },
   { label: "UDIAT", value: "UDI", file: "CCSPT-UDI-M3D-AS.frag" },
-  { label: "VII Centenari", value: "VII", file: "CCSPT-VII-M3D-AS.frag" },
+  { label: "VII Centenari", value: "VII", file: "CCSPT-VII-M3D-AS.frag" },  
 ];
 
 const VisorPage: React.FC = () => {
@@ -20,7 +22,7 @@ const VisorPage: React.FC = () => {
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%' }}>
       {/* Columna izquierda: selección */}
-      <div style={{ width: '40%', minWidth: 340, borderRight: '1px solid #e0e0e0', padding: '2rem', boxSizing: 'border-box', background: '#f7f7f7' }}>
+      <div style={{ width: '25%', minWidth: 300, borderRight: '1px solid #e0e0e0', padding: '1rem', boxSizing: 'border-box', background: '#f7f7f7' }}>
         <h4>Edifici</h4>
         <select
           value={selectedBuilding}
@@ -36,7 +38,7 @@ const VisorPage: React.FC = () => {
         <ConsultaBox edificioActivo={selectedBuilding} />
       </div>
       {/* Columna derecha: visor */}
-      <div style={{ width: '60%', padding: '0.5rem', boxSizing: 'border-box', background: '#fff' }}>
+      <div style={{ width: '75%', padding: '0.5rem', boxSizing: 'border-box', background: '#fff' }}>
 
 
         {/* Contenedor para el visor 3D - DEBE ESTAR VACÍO */}

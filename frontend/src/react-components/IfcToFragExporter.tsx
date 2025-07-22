@@ -17,10 +17,20 @@ const IfcToFragExporter: React.FC = () => {
       const arrayBuffer = await file.arrayBuffer();
       const ifcBytes = new Uint8Array(arrayBuffer);
 
-      // Crear el importador y cargar el IFC usando el método correcto del ejemplo
+      // Crear el importador y cargar el IFC usando el método correcto del ejemplo oficial
       const serializer = new FRAGS.IfcImporter();
-      serializer.wasm = { absolute: true, path: "https://unpkg.com/web-ifc@0.0.68/" };
-      const fragmentBytes = await serializer.process({ bytes: ifcBytes });
+      
+      // Usar exactamente la versión especificada en la documentación oficial
+      serializer.wasm = { absolute: true, path: "https://unpkg.com/web-ifc@0.0.69/" };
+      
+      // Añadir callback de progreso según el ejemplo oficial
+      const fragmentBytes = await serializer.process({ 
+        bytes: ifcBytes,
+        progressCallback: (progress, data) => {
+          console.log(`Progreso: ${Math.round(progress * 100)}%`, data);
+          setMessage(`Convirtiendo... ${Math.round(progress * 100)}%`);
+        }
+      });
 
       // Descargar el archivo .frag
       const fragFile = new File([fragmentBytes], file.name.replace(/\.ifc$/i, ".frag"));

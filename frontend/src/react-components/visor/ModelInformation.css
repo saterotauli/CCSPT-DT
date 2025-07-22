@@ -1,0 +1,100 @@
+/* Estilos para el panel de información del modelo */
+.options-menu {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 320px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  z-index: 1000;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e0e0e0;
+}
+
+/* Estilos para dispositivos móviles */
+@media (max-width: 768px) {
+  .options-menu {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 100%;
+    max-width: 320px;
+    height: 100vh;
+    max-height: 100vh;
+    transition: right 0.3s ease;
+    border-radius: 0;
+    z-index: 1001;
+  }
+  
+  .options-menu-visible {
+    right: 0 !important;
+  }
+  
+  .phone-menu-toggler {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1002;
+    background: white;
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* Estilos para las secciones del panel */
+bim-panel-section {
+  margin-bottom: 8px;
+}
+
+bim-panel-section[label="Info"] {
+  background-color: #f8f9fa;
+}
+
+bim-panel-section[label="Elemento Seleccionado"] {
+  background-color: #e3f2fd;
+}
+
+bim-panel-section[label="Categorías"] {
+  background-color: #f3e5f5;
+}
+
+bim-panel-section[label="Estructura Espacial"] {
+  background-color: #e8f5e8;
+}
+
+/* Estilos para botones */
+bim-button {
+  margin: 4px 0;
+}
+
+bim-button[loading] {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Estilos para labels */
+bim-label {
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 8px 0;
+}
+
+/* Estilos para dropdowns */
+bim-dropdown {
+  width: 100%;
+  margin: 8px 0;
+}
+
+/* Estilos para checkboxes */
+bim-checkbox {
+  margin: 4px 0;
+}
+
+/* Contenedores flexibles */
+div[style*="display: flex"] {
+  align-items: center;
+}

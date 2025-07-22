@@ -2,15 +2,20 @@ import React, { useEffect, useState } from "react";
 import * as THREE from "three";
 
 import * as OBC from "@thatopen/components";
-import { setupHighlight } from "./ModelInformation";
-import FloorSelector from "./FloorSelector"; // Crearemos este componente después
+import * as OBF from "@thatopen/components-front";
+import { setupHighlight, showElementInfo } from "./ModelInformation";
+import FloorSelector from "./FloorSelector";
+import ViewPlan from './ViewPlan';
+import ClassifierExample from './ClassifierExample';
 
 const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
 
-  const [world, setWorld] = useState<any>(null);
+  const [world, setWorld] = useState<OBC.World | null>(null);
   const [floors, setFloors] = useState<any[]>([]);
-    const [activeFloor, setActiveFloor] = useState<any | null>(null);
-  const [viewMode, setViewMode] = useState<'2D' | '3D'>('3D');
+  const [activeFloor, setActiveFloor] = useState<any | null>(null);
+  const [components, setComponents] = useState<OBC.Components | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
 
   useEffect(() => {
     const container = document.getElementById("viewer-container");
@@ -21,38 +26,36 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
     container.innerHTML = "";
 
     // Guarda referencias para limpieza
-    let components: OBC.Components | null = null;
+
     let workerURL: string | null = null;
-    let model: any = null;
+
     let resizeObserver: ResizeObserver | null = null;
 
     const init = async () => {
       try {
         console.log("Inicializando ModelLoader");
-        // Inicialización de Components según el ejemplo exacto
-        components = new OBC.Components();
+        const componentsInstance = new OBC.Components();
+        setComponents(componentsInstance);
 
-        const worlds = components.get(OBC.Worlds);
-        const worldInstance = worlds.create<OBC.SimpleScene, OBC.SimpleCamera, OBC.SimpleRenderer>();
+        const worlds = componentsInstance.get(OBC.Worlds);
+        const worldInstance = worlds.create<
+            OBC.SimpleScene,
+            OBC.OrthoPerspectiveCamera,
+            OBF.PostproductionRenderer
+        >();
+        setWorld(worldInstance);
 
-
-
-
-        worldInstance.scene = new OBC.SimpleScene(components);
+        worldInstance.scene = new OBC.SimpleScene(componentsInstance);
         worldInstance.scene.setup();
         worldInstance.scene.three.background = null;
 
-        worldInstance.renderer = new OBC.SimpleRenderer(components, container);
+        worldInstance.renderer = new OBF.PostproductionRenderer(componentsInstance, container);
+        worldInstance.camera = new OBC.OrthoPerspectiveCamera(componentsInstance);
 
-        worldInstance.camera = new OBC.SimpleCamera(components);
-        worldInstance.camera.controls.setLookAt(183, 11, -102, 27, -52, -11);
-
-
-
-        components.init();
+        componentsInstance.init();
 
         const updateRendererAndCamera = () => {
-          if (worldInstance && worldInstance.renderer && worldInstance.camera) {
+          if (worldInstance && worldInstance.renderer && worldInstance.camera && container) {
             worldInstance.renderer.resize();
             const camera = worldInstance.camera.three;
             if (camera instanceof THREE.PerspectiveCamera) {
@@ -63,12 +66,14 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         };
 
         // Configurar ResizeObserver para ajustar automáticamente
-        resizeObserver = new ResizeObserver(updateRendererAndCamera);
-        resizeObserver.observe(container);
+        if (container) {
+          resizeObserver = new ResizeObserver(updateRendererAndCamera);
+          resizeObserver.observe(container);
+        }
 
 
 
-        const grids = components.get(OBC.Grids);
+        const grids = componentsInstance.get(OBC.Grids);
         grids.create(worldInstance);
         
         // Worker setup igual al ejemplo
@@ -77,51 +82,72 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         const workerText = await fetchedWorker.text();
         const workerFile = new File([new Blob([workerText])], "worker.mjs", { type: "text/javascript" });
         workerURL = URL.createObjectURL(workerFile);
-        const fragmentsInstance = components.get(OBC.FragmentsManager);
-        fragmentsInstance.init(workerURL);
+        const fragmentsInstance = componentsInstance.get(OBC.FragmentsManager);
+        await fragmentsInstance.init(workerURL);
 
         setWorld(worldInstance);
         
-        // Importante: Eventos de cámara para actualización del modelo
-        worldInstance.camera.controls.addEventListener("rest", () => fragmentsInstance?.core.update(true));
-        worldInstance.onCameraChanged.add((camera) => {
-          for (const [, model] of fragmentsInstance.list) {
-            model.useCamera(camera.three);
+        // Configurar eventos de cámara siguiendo documentación oficial
+        worldInstance.camera.controls.addEventListener("rest", () => {
+          if (fragmentsInstance) {
+            fragmentsInstance.core.update(true);
           }
-          fragmentsInstance.core.update(true);
         });
 
-        fragmentsInstance.list.onItemSet.add(({ value: model }) => {
-          model.useCamera(worldInstance.camera.three);
-          worldInstance.scene.three.add(model.object);
-          fragmentsInstance.core.update(true);
-        });
-
-        
-        
-
-
-
-        // Solo cargar el modelo si buildingFile tiene valor
         if (!buildingFile) {
           console.log("Ningún edificio seleccionado, no se carga modelo.");
           return;
         }
-        const modelUrl = `/${buildingFile}`;
-        console.log("Cargando modelo desde:", modelUrl);
-        const file = await fetch(modelUrl);
-        if (!file.ok) {
-          throw new Error(`Error al cargar el modelo: ${file.status}`);
+
+        // Cargar el modelo arquitectónico (AS.frag)
+        const architecturalUrl = `/${buildingFile}`;
+        console.log("Cargando modelo arquitectónico desde:", architecturalUrl);
+        const archFile = await fetch(architecturalUrl);
+        if (!archFile.ok) {
+          throw new Error(`Error al cargar el modelo arquitectónico: ${archFile.status}`);
         }
-        const buffer = await file.arrayBuffer();
-        console.log("Buffer cargado, tamaño:", buffer.byteLength, "bytes");
-        model = await fragmentsInstance.core.load(buffer, { modelId: buildingFile });
-        console.log("Modelo cargado correctamente");
+        const archBuffer = await archFile.arrayBuffer();
+        console.log("Buffer arquitectónico cargado, tamaño:", archBuffer.byteLength, "bytes");
+        await fragmentsInstance.core.load(archBuffer, { modelId: buildingFile });
+        console.log("Modelo arquitectónico cargado correctamente");
+        
+        // Intentar cargar el modelo de instalaciones (ME.frag) si existe
+        try {
+          // Crear el nombre del archivo para el modelo ME sustituyendo AS.frag por ME.frag
+          const mechanicalFile = buildingFile.replace("-AS.frag", "-ME.frag");
+          const mechanicalUrl = `/${mechanicalFile}`;
+          
+          console.log("Intentando cargar modelo de instalaciones desde:", mechanicalUrl);
+          const mechFile = await fetch(mechanicalUrl);
+          
+          if (mechFile.ok) {
+            const mechBuffer = await mechFile.arrayBuffer();
+            console.log("Buffer de instalaciones cargado, tamaño:", mechBuffer.byteLength, "bytes");
+            await fragmentsInstance.core.load(mechBuffer, { modelId: mechanicalFile });
+            console.log("Modelo de instalaciones cargado correctamente");
+          } else {
+            console.log("Modelo de instalaciones no disponible o no encontrado.");
+          }
+        } catch (error) {
+          console.warn("Error al intentar cargar el modelo de instalaciones:", error);
+          // Continuamos con la ejecución aunque falle la carga del modelo ME
+        }
+        
+        // Añadir modelos cargados a la escena
+        for (const [, model] of fragmentsInstance.list) {
+          worldInstance.scene.three.add(model.object);
+          model.useCamera(worldInstance.camera.three);
+        }
+        
+        // Actualizar fragmentos
+        fragmentsInstance.core.update(true);
 
         // === LÓGICA DE HIGHLIGHT ===
-        setupHighlight(container, model, worldInstance, fragmentsInstance);
+        if (container) {
+          setupHighlight(container, worldInstance, fragmentsInstance);
+        }
 
-        const boxer = components.get(OBC.BoundingBoxer);
+        const boxer = componentsInstance.get(OBC.BoundingBoxer);
 
         const getLoadedModelsBoundings = () => {
           // As a good practice, always clean up the boxer list first
@@ -145,7 +171,7 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         worldInstance.camera.controls.fitToSphere(sphere, true);
 
         // Lógica para obtener los planos usando el Classifier
-        const classifier = components.get(OBC.Classifier);
+        const classifier = componentsInstance.get(OBC.Classifier);
         await classifier.byIfcBuildingStorey({ classificationName: "Levels" });
 
         const levelsClassification = classifier.list.get("Levels");
@@ -160,8 +186,12 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
             setFloors(floorData);
         }
 
+
+
+
         
 
+        setIsInitialized(true);
         //target.loading = false;
       } catch (error) {
         console.error("Error durante la inicialización:", error);
@@ -180,67 +210,43 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
     };
   }, [buildingFile]);
 
-  const setFloorVisibility = async (floor: any | null, mode: '2D' | '3D') => {
-    if (!world) return;
-    const hider = world.components.get(OBC.Hider);
-    const camera = world.camera;
-
-    // Lógica para mostrar todo
-    if (floor === null) {
-      await hider.set(true);
-      setActiveFloor(null);
-      camera.controls.orbiting = true;
-      world.camera.projection.current = "Perspective";
-      await camera.controls.fitToSphere(world.scene.three, true);
-      return;
-    }
-
-    // Aislar el nivel seleccionado
-    const classifier = world.components.get(OBC.Classifier);
-    const levelsClassification = classifier.list.get("Levels");
-    if (!levelsClassification) return;
-
-    const group = levelsClassification.get(floor.Name.value);
-    if (!group) return;
-
-    const modelIdMap = await group.get();
-    const groupBoundingBox = await hider.isolate(modelIdMap);
-    setActiveFloor(floor);
-
-    // Ajustar la cámara según el modo
-    if (mode === '2D') {
-      camera.controls.orbiting = false;
-      world.camera.projection.current = "Orthographic";
-      const center = new THREE.Vector3();
-      groupBoundingBox.getCenter(center);
-      await camera.controls.setLookAt(center.x, center.y + 10, center.z, center.x, center.y, center.z, false);
-      await camera.controls.fitToSphere(groupBoundingBox, false);
-    } else {
-      camera.controls.orbiting = true;
-      world.camera.projection.current = "Perspective";
-      await camera.controls.fitToSphere(groupBoundingBox, true);
-    }
-  };
-
-  useEffect(() => {
-    if (activeFloor) {
-      setFloorVisibility(activeFloor, viewMode);
-    }
-  }, [viewMode]);
-
   return (
     <>
-      {world && (
+      {isInitialized && world && components && <ViewPlan components={components} world={world} activeFloor={activeFloor} onViewClosed={() => setActiveFloor(null)} />}
+      {isInitialized && world && floors.length > 0 && (
         <FloorSelector 
           floors={floors} 
-          onFloorSelected={(floor) => setFloorVisibility(floor, viewMode)} 
-          currentMode={viewMode}
-          onViewModeChange={setViewMode}
+          onViewSelected={(floor: any) => setActiveFloor(floor)} 
         />
+      )}
+      {isInitialized && components && (
+        <ClassifierExample 
+          components={components}
+        />
+      )}
+      {isInitialized && (
+        <button
+          onClick={showElementInfo}
+          style={{
+            position: 'fixed',
+            top: '10px',
+            right: '10px',
+            zIndex: 1001,
+            padding: '8px 12px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+          title="Mostrar información del elemento seleccionado"
+        >
+          Info Elemento
+        </button>
       )}
     </>
   );
-
 };
 
 export default ModelLoader;
