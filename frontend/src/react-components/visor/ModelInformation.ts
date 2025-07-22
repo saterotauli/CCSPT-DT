@@ -43,7 +43,7 @@ export function setupHighlight(
     }
   }
 
-  // Material dorado para resaltar
+  // Material dorado para selección
   const highlightMaterial: FRAGS.MaterialDefinition = {
     color: new THREE.Color("gold"),
     renderedFaces: FRAGS.RenderedFaces.TWO,
@@ -51,12 +51,56 @@ export function setupHighlight(
     transparent: false,
   };
 
+  // Material azul claro para hover/preselección
+  const hoverMaterial: FRAGS.MaterialDefinition = {
+    color: new THREE.Color("lightblue"),
+    renderedFaces: FRAGS.RenderedFaces.TWO,
+    opacity: 0.8,
+    transparent: true,
+  };
+
+  // Variables para selección
   let localId: number | null = null;
   let selectedModel: any = null;
   let selectedModelId: string | null = null;
+  
+  // Variables para hover
+  let hoveredLocalId: number | null = null;
+  let hoveredModel: any = null;
+  
   _localId = null;
   _model = null;
   _modelId = null;
+
+  // Función de raycast para múltiples modelos
+  const raycast = async (data: {
+    camera: any;
+    mouse: THREE.Vector2;
+    dom: HTMLElement;
+  }) => {
+    const results = [];
+    for (const [, model] of fragments.list) {
+      const result = await model.raycast(data);
+      if (result) {
+        results.push({ ...result, model });
+      }
+    }
+    
+    if (results.length === 0) return null;
+    
+    // Encontrar el resultado más cercano
+    let closestResult = results[0];
+    let minDistance = closestResult.distance;
+    
+    for (let i = 1; i < results.length; i++) {
+      if (results[i].distance < minDistance) {
+        minDistance = results[i].distance;
+        closestResult = results[i];
+      }
+    }
+    
+    return closestResult;
+  };
 
   const highlight = async () => {
     if (!localId || !selectedModel) return;
@@ -68,6 +112,13 @@ export function setupHighlight(
     await selectedModel.resetHighlight([localId]);
   };
   
+  const highlightHover = async () => {
+    if (!hoveredLocalId || !hoveredModel) return;
+    await hoveredModel.highlight([hoveredLocalId], hoverMaterial);
+  };
+  
+  
+  
   // Reset highlights in all models when needed
   const resetAllHighlights = async () => {
     const promises = [];
@@ -78,63 +129,122 @@ export function setupHighlight(
   };
 
   const mouse = new THREE.Vector2();
+  
+  // Event listener para hover (pointermove)
+  container.addEventListener("pointermove", async (event) => {
+    mouse.x = event.clientX;
+    mouse.y = event.clientY;
+    
+    const result = await raycast({
+      camera: world.camera.three,
+      mouse,
+      dom: world.renderer!.three.domElement!,
+    });
+    
+    // Determinar si necesitamos cambiar el hover
+    const newHoveredElement = result && result.model ? 
+      { localId: result.localId, model: result.model } : null;
+    
+    const currentHoveredElement = hoveredLocalId && hoveredModel ? 
+      { localId: hoveredLocalId, model: hoveredModel } : null;
+    
+    // Si el elemento hover ha cambiado
+    if (!areElementsEqual(newHoveredElement, currentHoveredElement)) {
+      // Resetear solo hovers específicos para evitar conflictos con selección
+      if (currentHoveredElement) {
+        await currentHoveredElement.model.resetHighlight([currentHoveredElement.localId]);
+      }
+      hoveredLocalId = null;
+      hoveredModel = null;
+      
+      // Aplicar nuevo hover si existe y no es el elemento seleccionado
+      if (newHoveredElement && !areElementsEqual(newHoveredElement, { localId, model: selectedModel })) {
+        hoveredLocalId = newHoveredElement.localId;
+        hoveredModel = newHoveredElement.model;
+        await highlightHover();
+        console.log(`Nuevo hover aplicado a elemento ${hoveredLocalId}`);
+      }
+    }
+    
+    await fragments?.core.update(true);
+  });
+  
+  // Función helper para comparar elementos
+  function areElementsEqual(elem1: any, elem2: any) {
+    if (!elem1 && !elem2) return true;
+    if (!elem1 || !elem2) return false;
+    return elem1.localId === elem2.localId && elem1.model === elem2.model;
+  }
+  
+  // Event listener para click (selección)
   container.addEventListener("click", async (event) => {
     mouse.x = event.clientX;
     mouse.y = event.clientY;
     
-    // Realizar raycast en todos los modelos cargados
-    let bestResult = null;
-    let bestDistance = Infinity;
-    let resultModel = null;
-    let resultModelId = null;
-
-    // Resetear highlight previo en todos los modelos
-    await resetAllHighlights();
-    
-    // Raycast en todos los modelos para encontrar el más cercano
-    for (const [modelId, model] of fragments.list) {
-      const result = await model.raycast({
-        camera: world.camera.three,
-        mouse,
-        dom: world.renderer!.three.domElement!,
-      });
-      
-      if (result && result.distance < bestDistance) {
-        bestResult = result;
-        bestDistance = result.distance;
-        resultModel = model;
-        resultModelId = modelId;
-        
-        // Debug: Mostrar información sobre el modelo seleccionado
-        console.log(`Modelo seleccionado: ${modelId}`, model);
-      }
-    }
+    const result = await raycast({
+      camera: world.camera.three,
+      mouse,
+      dom: world.renderer!.three.domElement!,
+    });
     
     const promises = [];
     
-    if (bestResult) {
+    if (result && result.model) {
+      // Si es el mismo elemento ya seleccionado, no hacer nada
+      if (result.localId === localId && result.model === selectedModel) {
+        return;
+      }
+      
+      // Resetear solo la selección anterior (no el hover)
+      if (selectedModel && localId) {
+        await selectedModel.resetHighlight([localId]);
+      }
+      
+      // Resetear solo hovers específicos antes de seleccionar (no usar resetAllHovers aquí)
+      if (hoveredLocalId && hoveredModel) {
+        await hoveredModel.resetHighlight([hoveredLocalId]);
+      }
+      hoveredLocalId = null;
+      hoveredModel = null;
+      
       // Guardar referencia al modelo y al elemento seleccionados
-      selectedModel = resultModel;
-      selectedModelId = resultModelId;
-      localId = bestResult.localId;
+      selectedModel = result.model;
+      selectedModelId = result.model.id || 'unknown';
+      localId = result.localId;
       
       // Actualizar variables globales para las funciones de información
       _model = selectedModel;
       _localId = localId;
       _modelId = selectedModelId;
       
+      // Debug: Mostrar información sobre el modelo seleccionado
+      console.log(`Modelo seleccionado: ${selectedModelId}`, selectedModel);
+      
+      // Aplicar highlight de selección
+      await highlight();
+      
       // Llama al handler externo y muestra info en consola
       handlers?.onItemSelected?.();
       logSelectedInfo();
-      promises.push(highlight());
     } else {
-      selectedModel = null;
-      selectedModelId = null;
-      localId = null;
-      _model = null;
-      _localId = null;
-      _modelId = null;
-      handlers?.onItemDeselected?.();
+      // Solo deseleccionar si hacemos clic en vacío
+      if (selectedModel && localId) {
+        await selectedModel.resetHighlight([localId]);
+        // También limpiar cualquier hover residual
+        if (hoveredLocalId && hoveredModel) {
+          await hoveredModel.resetHighlight([hoveredLocalId]);
+        }
+        selectedModel = null;
+        selectedModelId = null;
+        localId = null;
+        _model = null;
+        _localId = null;
+        _modelId = null;
+        hoveredLocalId = null;
+        hoveredModel = null;
+        handlers?.onItemDeselected?.();
+        console.log('Elemento deseleccionado');
+      }
     }
     promises.push(fragments?.core.update(true));
     Promise.all(promises);
