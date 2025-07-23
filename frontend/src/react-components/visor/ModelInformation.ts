@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import * as FRAGS from "@thatopen/fragments";
 import * as BUI from "@thatopen/ui";
+import * as OBC from "@thatopen/components";
 
 console.log("Panel cargado");
 
@@ -14,6 +15,47 @@ let _model: any = null;
 let _localId: number | null = null;
 // Store model ID for tracking which model an element belongs to
 let _modelId: string | null = null;
+// Store fragments manager reference
+let _fragments: any = null;
+
+// Sistema de notificaciones para cambios de selección
+let selectionChangeCallbacks: (() => void)[] = [];
+
+export function onSelectionChange(callback: () => void) {
+  selectionChangeCallbacks.push(callback);
+  return () => {
+    selectionChangeCallbacks = selectionChangeCallbacks.filter(cb => cb !== callback);
+  };
+}
+
+export function getCurrentElementId(): string | null {
+  if (!_modelId || !_localId) return null;
+  return `${_modelId}:${_localId}`;
+}
+
+// Variables para evitar notificaciones redundantes
+let lastNotifiedLocalId: number | null = null;
+let lastNotifiedModelId: string | null = null;
+
+function notifySelectionChange() {
+  // Solo notificar si realmente ha cambiado la selección
+  if (_localId === lastNotifiedLocalId && _modelId === lastNotifiedModelId) {
+    return; // No ha cambiado, no notificar
+  }
+  
+  lastNotifiedLocalId = _localId;
+  lastNotifiedModelId = _modelId;
+  
+  console.log(`Notificando cambio de selección: ${_modelId}:${_localId}`);
+  
+  selectionChangeCallbacks.forEach(callback => {
+    try {
+      callback();
+    } catch (error) {
+      console.error('Error en callback de selección:', error);
+    }
+  });
+}
 
 export function setupHighlight(
   container: HTMLElement,
@@ -21,6 +63,18 @@ export function setupHighlight(
   fragments: any, // FragmentsModels
   handlers?: HighlightHandlers
 ) {
+  const mouse = new THREE.Vector2();
+  
+  // Store fragments reference globally for use in other functions
+  _fragments = fragments;
+  
+  // Variables para rastrear elementos seleccionados y hover
+  let selectedModel: any = null;
+  let selectedModelId: string | null = null;
+  let localId: number | null = null;
+  let hoveredLocalId: number | null = null;
+  let hoveredModel: any = null;
+  
   // Verificamos que existan modelos cargados
   if (fragments.list.size === 0) return;
 
@@ -58,19 +112,6 @@ export function setupHighlight(
     opacity: 0.8,
     transparent: true,
   };
-
-  // Variables para selección
-  let localId: number | null = null;
-  let selectedModel: any = null;
-  let selectedModelId: string | null = null;
-  
-  // Variables para hover
-  let hoveredLocalId: number | null = null;
-  let hoveredModel: any = null;
-  
-  _localId = null;
-  _model = null;
-  _modelId = null;
 
   // Función de raycast para múltiples modelos
   const raycast = async (data: {
@@ -128,7 +169,7 @@ export function setupHighlight(
     await Promise.all(promises);
   };
 
-  const mouse = new THREE.Vector2();
+
   
   // Event listener para hover (pointermove)
   container.addEventListener("pointermove", async (event) => {
@@ -162,7 +203,7 @@ export function setupHighlight(
         hoveredLocalId = newHoveredElement.localId;
         hoveredModel = newHoveredElement.model;
         await highlightHover();
-        console.log(`Nuevo hover aplicado a elemento ${hoveredLocalId}`);
+        //console.log(`Nuevo hover aplicado a elemento ${hoveredLocalId}`);
       }
     }
     
@@ -175,6 +216,8 @@ export function setupHighlight(
     if (!elem1 || !elem2) return false;
     return elem1.localId === elem2.localId && elem1.model === elem2.model;
   }
+  
+
   
   // Event listener para click (selección)
   container.addEventListener("click", async (event) => {
@@ -223,6 +266,9 @@ export function setupHighlight(
       // Aplicar highlight de selección
       await highlight();
       
+      // Notificar cambio de selección
+      notifySelectionChange();
+      
       // Llama al handler externo y muestra info en consola
       handlers?.onItemSelected?.();
       logSelectedInfo();
@@ -242,6 +288,10 @@ export function setupHighlight(
         _modelId = null;
         hoveredLocalId = null;
         hoveredModel = null;
+        
+        // Notificar cambio de selección (deseleccionado)
+        notifySelectionChange();
+        
         handlers?.onItemDeselected?.();
         console.log('Elemento deseleccionado');
       }
@@ -490,6 +540,147 @@ export function formatItemPsets(rawPsets: any[]): Record<string, Record<string, 
   return result;
 }
 
+/**
+ * Resalta todos los elementos cuyo parámetro "Nombre de sistema" coincide con el nombre dado.
+ * Utiliza el ItemsFinder de ThatOpen para buscar elementos por atributos.
+ */
+export async function logAllModelElements() {
+  if (!_fragments || _fragments.list.size === 0) {
+    console.warn('No hay modelos cargados.');
+    return;
+  }
+  for (const [modelId, model] of _fragments.list) {
+    console.log(`\n=== Modelo: ${modelId} ===`);
+    if (typeof model.getAllItems !== 'function') {
+      console.warn(`El modelo ${modelId} no tiene getAllItems()`);
+      continue;
+    }
+    const allItems = await model.getAllItems();
+    console.log(`Total elementos en modelo ${modelId}: ${allItems.length}`);
+    // Procesar en chunks para no saturar
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < allItems.length; i += CHUNK_SIZE) {
+      const chunk = allItems.slice(i, i + CHUNK_SIZE);
+      const itemsData = await model.getItemsData(chunk, { attributes: true, psets: false });
+      for (const data of itemsData) {
+        const guid = data._guid?.value || data.GUID?.value || 'sin guid';
+        const category = data.category?.value || data._category?.value || 'sin categoría';
+        const name = data.Name?.value || data.name?.value || '';
+        console.log({ guid, category, name });
+      }
+    }
+  }
+}
+
+export async function highlightSystemByName(systemName: string) {
+  console.log("======================================================");
+  console.log(`[highlightSystemByName] 🚀 USANDO ITEMSFINDER OFICIAL: ${systemName}`);
+  console.log("======================================================");
+
+  if (!_fragments) {
+    console.warn('No hay fragments manager disponible para buscar sistemas');
+    return;
+  }
+
+  try {
+    // Obtener el componente ItemsFinder desde fragments manager
+    const components = (_fragments as any).components;
+    if (!components) {
+      console.error('No se puede acceder a components desde fragments manager');
+      return;
+    }
+    
+    const finder = components.get(OBC.ItemsFinder);
+    if (!finder) {
+      console.error('ItemsFinder no está disponible');
+      return;
+    }
+    
+    console.log('🔍 Creando query para buscar elementos con "Nombre de sistema":', systemName);
+    
+    // Crear una query para buscar elementos con el atributo "Nombre de sistema"
+    const queryName = `Sistema_${systemName}_${Date.now()}`;
+    
+    // Según la documentación oficial, crear la query así:
+    finder.create(queryName, [
+      {
+        categories: [/DUCTSEGMENT/, /FLOWTERMINAL/, /FLOWFITTING/, /PIPESEGMENT/, /PIPEFITTING/, /WALL/, /SLAB/, /BEAM/, /COLUMN/],
+        attributes: {
+          queries: [
+            { name: /Nombre de sistema/, value: new RegExp(`^${systemName}$`, 'i') }
+          ]
+        }
+      }
+    ]);
+
+    console.log('🔎 Ejecutando query según documentación oficial...');
+    
+    // Usar el helper function de la documentación
+    const getResult = async (name: string) => {
+      const finderQuery = finder.list.get(name);
+      if (!finderQuery) return {};
+      const result = await finderQuery.test();
+      return result;
+    };
+    
+    const result = await getResult(queryName);
+    console.log('📊 Resultado de la query:', result);
+    
+    // Extraer los GUIDs de los elementos encontrados
+    const matchingGuids: string[] = [];
+    
+    for (const [modelId, fragmentIds] of Object.entries(result)) {
+      console.log(`📁 Modelo ${modelId}: ${Array.isArray(fragmentIds) ? fragmentIds.length : Object.keys(fragmentIds as object).length} elementos`);
+      
+      // Obtener el modelo
+      const model = _fragments.list.get(modelId);
+      if (!model) {
+        console.warn(`Modelo ${modelId} no encontrado`);
+        continue;
+      }
+      
+      // Convertir fragmentIds a array si es necesario
+      const idsArray = Array.isArray(fragmentIds) ? fragmentIds : Object.keys(fragmentIds as object).map(Number);
+      
+      for (const fragmentId of idsArray) {
+        try {
+          // Obtener datos del elemento para extraer el GUID
+          const [data] = await model.getItemsData([fragmentId], {
+            attributesDefault: false,
+            attributes: ['_guid'],
+          });
+          
+          if (data?._guid?.value) {
+            matchingGuids.push(data._guid.value);
+            console.log(`✅ Elemento encontrado: ${data._guid.value}`);
+          }
+        } catch (error) {
+          console.warn(`Error obteniendo GUID para fragmentId ${fragmentId}:`, error);
+        }
+      }
+    }
+    
+    console.log('\n' + '='.repeat(80));
+    console.log('📊 RESUMEN DE BÚSQUEDA CON ITEMSFINDER');
+    console.log('='.repeat(80));
+    console.log(`✅ Elementos que coinciden con "${systemName}": ${matchingGuids.length}`);
+    
+    if (matchingGuids.length > 0) {
+      console.log('🎯 GUIDs a resaltar:', matchingGuids);
+      await highlightByGuids(matchingGuids);
+    } else {
+      console.warn('❌ No se encontraron elementos para el sistema:', systemName);
+    }
+    
+    // Limpiar la query temporal
+    finder.list.delete(queryName);
+    
+    console.log('='.repeat(80));
+  } catch (err) {
+    console.error('❌ Error buscando elementos del sistema:', err);
+  }
+}
+
 // === FUNCIÓN SIMPLE PARA MOSTRAR INFORMACIÓN ===
 // Crear un panel simple que muestre información del elemento seleccionado
 export function showElementInfo() {
@@ -505,7 +696,7 @@ export function showElementInfo() {
     position: fixed;
     top: 50px;
     right: 20px;
-    width: 300px;
+    width: 00px;
     max-height: 400px;
     background: white;
     border: 1px solid #ccc;

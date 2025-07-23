@@ -117,7 +117,7 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
         console.log("Inicializando clasificaciones por defecto...");
         
         // Creamos las clasificaciones
-        await classifier.byCategory();
+        //await classifier.byCategory();
         await classifier.byIfcBuildingStorey({ classificationName: "Levels" });
         
         console.log("Clasificaciones creadas:", Array.from(classifier.list.keys()));
@@ -226,7 +226,7 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
     <div className="bim-panel" style={{ 
       position: 'absolute', 
       top: '80px',
-      right: '220px', 
+      left: '600px', 
       backgroundColor: 'white', 
       borderRadius: '8px',
       padding: '15px',

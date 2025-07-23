@@ -3,40 +3,45 @@ import * as THREE from "three";
 
 import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
-import { setupHighlight, showElementInfo } from "./ModelInformation";
-import FloorSelector from "./FloorSelector";
-import ViewPlan from './ViewPlan';
+import { setupHighlight } from "./ModelInformation";
+// import FloorSelector from "./FloorSelector";
 import ClassifierExample from './ClassifierExample';
 
-const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
+interface ModelLoaderProps {
+  buildingFile: string; // Nombre del archivo de fragmentos a cargar
+}
 
+const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile }) => {
+  // Estado para el mundo 3D
   const [world, setWorld] = useState<OBC.World | null>(null);
+  // Estado para los niveles detectados
   const [floors, setFloors] = useState<any[]>([]);
-  const [activeFloor, setActiveFloor] = useState<any | null>(null);
+  // Estado para los componentes de ThatOpen
   const [components, setComponents] = useState<OBC.Components | null>(null);
+  // Estado para saber si la inicialización ha terminado
   const [isInitialized, setIsInitialized] = useState(false);
 
-
+  // Efecto principal: inicializa el visor y carga los modelos al montar/cambiar buildingFile
   useEffect(() => {
+    // Obtiene el contenedor del visor
     const container = document.getElementById("viewer-container");
     if (!container) {
       console.error("No se encontró el contenedor 'viewer-container'");
       return;
     }
-    container.innerHTML = "";
-
-    // Guarda referencias para limpieza
+    container.innerHTML = ""; // Limpia el contenedor
 
     let workerURL: string | null = null;
-
     let resizeObserver: ResizeObserver | null = null;
 
+    // Función asíncrona de inicialización
     const init = async () => {
       try {
-        console.log("Inicializando ModelLoader");
+        // 1. Inicialización básica de componentes y escena
         const componentsInstance = new OBC.Components();
         setComponents(componentsInstance);
 
+        // Crea el mundo y la escena principal
         const worlds = componentsInstance.get(OBC.Worlds);
         const worldInstance = worlds.create<
             OBC.SimpleScene,
@@ -49,11 +54,13 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         worldInstance.scene.setup();
         worldInstance.scene.three.background = null;
 
+        // Configura el renderer y la cámara
         worldInstance.renderer = new OBF.PostproductionRenderer(componentsInstance, container);
         worldInstance.camera = new OBC.OrthoPerspectiveCamera(componentsInstance);
 
         componentsInstance.init();
 
+        // Ajuste responsivo del visor al tamaño del contenedor
         const updateRendererAndCamera = () => {
           if (worldInstance && worldInstance.renderer && worldInstance.camera && container) {
             worldInstance.renderer.resize();
@@ -65,18 +72,17 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
           }
         };
 
-        // Configurar ResizeObserver para ajustar automáticamente
+        // Observa cambios de tamaño en el contenedor
         if (container) {
           resizeObserver = new ResizeObserver(updateRendererAndCamera);
           resizeObserver.observe(container);
         }
 
+        // 2. Añade una cuadrícula base
+        //const grids = componentsInstance.get(OBC.Grids);
+        //grids.create(worldInstance);
 
-
-        const grids = componentsInstance.get(OBC.Grids);
-        grids.create(worldInstance);
-        
-        // Worker setup igual al ejemplo
+        // 3. Inicializa el worker de fragmentos (descarga desde ThatOpen CDN)
         const workerUrl = "https://thatopen.github.io/engine_fragment/resources/worker.mjs";
         const fetchedWorker = await fetch(workerUrl);
         const workerText = await fetchedWorker.text();
@@ -86,113 +92,85 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
         await fragmentsInstance.init(workerURL);
 
         setWorld(worldInstance);
-        
-        // Configurar eventos de cámara siguiendo documentación oficial
+
+        // 4. Configura eventos de cámara para actualizar la escena tras movimientos
         worldInstance.camera.controls.addEventListener("rest", () => {
           if (fragmentsInstance) {
             fragmentsInstance.core.update(true);
           }
         });
 
+        // 5. Carga el modelo arquitectónico principal (AS.frag)
         if (!buildingFile) {
           console.log("Ningún edificio seleccionado, no se carga modelo.");
           return;
         }
-
-        // Cargar el modelo arquitectónico (AS.frag)
         const architecturalUrl = `/${buildingFile}`;
-        console.log("Cargando modelo arquitectónico desde:", architecturalUrl);
         const archFile = await fetch(architecturalUrl);
         if (!archFile.ok) {
           throw new Error(`Error al cargar el modelo arquitectónico: ${archFile.status}`);
         }
         const archBuffer = await archFile.arrayBuffer();
-        console.log("Buffer arquitectónico cargado, tamaño:", archBuffer.byteLength, "bytes");
         await fragmentsInstance.core.load(archBuffer, { modelId: buildingFile });
-        console.log("Modelo arquitectónico cargado correctamente");
-        
-        // Intentar cargar el modelo de instalaciones (ME.frag) si existe
+
+        // 6. Intenta cargar el modelo de instalaciones (ME.frag) si existe
         try {
-          // Crear el nombre del archivo para el modelo ME sustituyendo AS.frag por ME.frag
           const mechanicalFile = buildingFile.replace("-AS.frag", "-ME.frag");
           const mechanicalUrl = `/${mechanicalFile}`;
-          
-          console.log("Intentando cargar modelo de instalaciones desde:", mechanicalUrl);
           const mechFile = await fetch(mechanicalUrl);
-          
           if (mechFile.ok) {
             const mechBuffer = await mechFile.arrayBuffer();
-            console.log("Buffer de instalaciones cargado, tamaño:", mechBuffer.byteLength, "bytes");
             await fragmentsInstance.core.load(mechBuffer, { modelId: mechanicalFile });
-            console.log("Modelo de instalaciones cargado correctamente");
-          } else {
-            console.log("Modelo de instalaciones no disponible o no encontrado.");
           }
         } catch (error) {
           console.warn("Error al intentar cargar el modelo de instalaciones:", error);
-          // Continuamos con la ejecución aunque falle la carga del modelo ME
         }
-        
-        // Añadir modelos cargados a la escena
+
+        // 7. Añade todos los modelos cargados a la escena y asocia la cámara
         for (const [, model] of fragmentsInstance.list) {
           worldInstance.scene.three.add(model.object);
           model.useCamera(worldInstance.camera.three);
         }
-        
-        // Actualizar fragmentos
+
+        // 8. Actualiza los fragmentos en la escena
         fragmentsInstance.core.update(true);
 
-        // === LÓGICA DE HIGHLIGHT ===
-        if (container) {
-          setupHighlight(container, worldInstance, fragmentsInstance);
-        }
+        // 9. Configura el sistema de selección y resaltado (highlight)
+        setupHighlight(container, worldInstance, fragmentsInstance);
 
+        // 10. Calcula el bounding box de todos los modelos cargados
         const boxer = componentsInstance.get(OBC.BoundingBoxer);
-
         const getLoadedModelsBoundings = () => {
-          // As a good practice, always clean up the boxer list first
-          // so no previous boxes added are taken into account
           boxer.list.clear();
           boxer.addFromModels();
-          // This computes the merged box of the list.
           const box = boxer.get();
-          // As a good practice, always clean up the boxer list after the calculation
           boxer.list.clear();
           return box;
         };
-
         const box = getLoadedModelsBoundings();
         const sphere = new THREE.Sphere();
         box.getBoundingSphere(sphere);
 
-        // Actualizar manualmente el aspect ratio antes de hacer el fit
+        // 11. Ajusta la cámara para que enfoque todo el modelo
         updateRendererAndCamera();
-
         worldInstance.camera.controls.fitToSphere(sphere, true);
 
-        // Lógica para obtener los planos usando el Classifier
+        // 12. Clasifica los elementos por niveles (plantas)
         const classifier = componentsInstance.get(OBC.Classifier);
         await classifier.byIfcBuildingStorey({ classificationName: "Levels" });
-
         const levelsClassification = classifier.list.get("Levels");
         if (levelsClassification) {
-            const floorData = [];
-            for (const [name] of levelsClassification) {
-                floorData.push({
-                    Name: { value: name },
-                    expressID: name, // Usamos el nombre como ID único para React
-                });
-            }
-            setFloors(floorData);
+          const floorData = [];
+          for (const [name] of levelsClassification) {
+              floorData.push({
+                  Name: { value: name },
+                  expressID: name, // Usamos el nombre como ID único para React
+              });
+          }
+          setFloors(floorData);
         }
 
-
-
-
-        
-
         setIsInitialized(true);
-        //target.loading = false;
       } catch (error) {
         console.error("Error durante la inicialización:", error);
       }
@@ -200,7 +178,7 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
 
     init();
 
-    // Limpieza
+    // Cleanup: libera recursos y observadores al desmontar el componente
     return () => {
       console.log("Limpiando recursos...");
       resizeObserver?.disconnect();
@@ -212,38 +190,11 @@ const ModelLoader: React.FC<{ buildingFile: string }> = ({ buildingFile }) => {
 
   return (
     <>
-      {isInitialized && world && components && <ViewPlan components={components} world={world} activeFloor={activeFloor} onViewClosed={() => setActiveFloor(null)} />}
-      {isInitialized && world && floors.length > 0 && (
-        <FloorSelector 
-          floors={floors} 
-          onViewSelected={(floor: any) => setActiveFloor(floor)} 
-        />
-      )}
+      {/* Aquí se pueden añadir otros componentes como el panel de información o el selector de plantas */}
       {isInitialized && components && (
         <ClassifierExample 
           components={components}
         />
-      )}
-      {isInitialized && (
-        <button
-          onClick={showElementInfo}
-          style={{
-            position: 'fixed',
-            top: '10px',
-            right: '10px',
-            zIndex: 1001,
-            padding: '8px 12px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '14px'
-          }}
-          title="Mostrar información del elemento seleccionado"
-        >
-          Info Elemento
-        </button>
       )}
     </>
   );
