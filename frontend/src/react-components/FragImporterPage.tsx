@@ -1,5 +1,4 @@
 import React, { useRef, useState } from "react";
-//import * as OBC from "@thatopen/components";
 import * as FRAGS from "@thatopen/fragments";
 import "./FragImporterPage.css";
 
@@ -18,13 +17,9 @@ interface HabitacionIFC {
 }
 
 const FragImporterPage: React.FC = () => {
-  // Nuevo estado para el modal de resumen
+  // Estados para el modal de resumen
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [updateSummary, setUpdateSummary] = useState<any[]>([]);
-
-  const [actiusProcesados, setActiusProcesados] = useState<any[]>([]);
-  
-  
   const [status, setStatus] = useState<string>("");
   const [ifcSpaces, setIfcSpaces] = useState<HabitacionIFC[]>([]);
   const [sortColumn, setSortColumn] = useState<keyof HabitacionIFC | null>(null);
@@ -33,15 +28,12 @@ const FragImporterPage: React.FC = () => {
 
   // Sorting handler
   function handleSort(column: keyof HabitacionIFC) {
-    setSortColumn((prev: keyof HabitacionIFC | null) => {
-      if (prev === column) {
-        setSortDirection((dir) => (dir === 'asc' ? 'desc' : 'asc'));
-        return column;
-      } else {
-        setSortDirection('asc');
-        return column;
-      }
-    });
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
   }
 
   // Calcular codis duplicados para la tabla
@@ -53,213 +45,106 @@ const FragImporterPage: React.FC = () => {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    console.log('[FragImporter] Archivo seleccionado:', file.name, 'Tipo:', file.type, 'Tamaño:', file.size);
+    
     setStatus("Leyendo archivo...");
     const arrayBuffer = await file.arrayBuffer();
-    setStatus("Convirtiendo a .frag...");
-    const serializer = new FRAGS.IfcImporter();
-    serializer.wasm = { absolute: true, path: "https://unpkg.com/web-ifc@0.0.68/" };
+    
+    // Detectar el tipo de archivo por extensión
+    const fileName = file.name.toLowerCase();
+    const isIfcFile = fileName.endsWith('.ifc');
+    const isFragFile = fileName.endsWith('.frag');
+    
+    console.log('[FragImporter] Tipo de archivo detectado:', { isIfcFile, isFragFile });
     
     try {
-      setStatus("Cargando modelo de fragmentos...");
-      // 1. Inicializar FragmentsModels con el worker
-      const workerUrl = "/worker.mjs";
-      const fragments = new FRAGS.FragmentsModels(workerUrl);
-      // 2. Cargar el modelo .frag (usando el archivo cargado)
-      const model = await fragments.load(arrayBuffer, { modelId: "frag-upload" });
+      let model;
+      
+      if (isIfcFile) {
+        // Por ahora, solo soportamos archivos .frag
+        throw new Error('Los archivos IFC no están soportados actualmente. Por favor, usa archivos .frag');
+        
+      } else if (isFragFile) {
+        // Procesar archivo FRAG directamente
+        setStatus("Cargando modelo de fragmentos...");
+        const workerUrl = "/worker.mjs";
+        const fragments = new FRAGS.FragmentsModels(workerUrl);
+        
+        // Verificar que el worker se inicializó correctamente
+        console.log('[FragImporter] FragmentsModels creado:', fragments);
+        
+        // Cargar el modelo .frag directamente
+        model = await fragments.load(arrayBuffer, { modelId: "frag-upload" });
+        
+      } else {
+        throw new Error(`Tipo de archivo no soportado: ${fileName}. Solo se admiten archivos .ifc y .frag`);
+      }
+      
+      // Verificar que el modelo se cargó correctamente
+      console.log('[FragImporter] Modelo cargado:', model);
+      console.log('[FragImporter] Métodos disponibles en model:', Object.getOwnPropertyNames(Object.getPrototypeOf(model)));
+      
       setStatus("Modelo cargado. Extrayendo ifcSpaces...");
-      // 3. Obtener los espacios (IFCSPACE)
-      const spaces = await model.getItemsOfCategory("IFCSPACE");
-      // DEBUG: Mostrar todos los GUIDs de los espacios IFCSPACE extraídos
-      console.log('[FragImporter] IFCSPACE items:', spaces.map((s:any) => s.GlobalId || s.globalId || s.guid || (s._guid && s._guid.value)));
-
-
-      // 3b. Obtener las puertas (IFCDOOR)
-      const doors = await model.getItemsOfCategory("IFCDOOR");
-      const doorLocalIds = (
-        await Promise.all(doors.map((item: any) => item.getLocalId()))
-      ).filter((id: number | null) => id !== null) as number[];
-      const doorData = await model.getItemsData(doorLocalIds, {
+      
+      // Verificar si el método existe antes de llamarlo
+      if (typeof model.getItemsOfCategories !== 'function') {
+        throw new Error(`El método getItemsOfCategories no está disponible. Métodos disponibles: ${Object.getOwnPropertyNames(Object.getPrototypeOf(model)).join(', ')}`);
+      }
+      
+      // Obtener los espacios (IFCSPACE)
+      console.log('[FragImporter] Obteniendo elementos IFCSPACE...');
+      const spacesResult = await model.getItemsOfCategories([/IFCSPACE/]);
+      console.log('[FragImporter] Resultado de getItemsOfCategories para IFCSPACE:', spacesResult);
+      
+      const spaceLocalIds = spacesResult.IFCSPACE || [];
+      console.log('[FragImporter] LocalIds de espacios encontrados:', spaceLocalIds);
+      
+      const spacesData = await model.getItemsData(spaceLocalIds, {
         attributesDefault: true,
         relations: {
-          IsDefinedBy: { attributes: true, relations: true },
-          IsTypedBy: { attributes: true, relations: true }
+          IsDefinedBy: { attributes: true, relations: true }
         }
       });
-
-      // Procesar y mostrar solo guid, tipus y subtipus para puertas
-      const puertasProcesadas = doorData.map((obj: any) => {
-        let guid = '';
-        let edifici = '';
-        let planta = '';
-        // 1. Intenta usar el GlobalId directo
-        if (obj.GlobalId) {
-          guid = obj.GlobalId;
-        } else if (obj.globalId) {
-          guid = obj.globalId;
-        } else if (obj.guid) {
-          guid = obj.guid;
-        } else if (obj._guid && obj._guid.value) {
-          guid = obj._guid.value;
-        }
-        // 2. Si no, busca en los psets el IfcGUID y otros atributos
-        const psets = obj.IsDefinedBy as any[] | undefined;
-        if (!guid && psets && Array.isArray(psets)) {
-          const psetWithGuid = psets.find(pset => pset._guid && pset._guid.value);
-          if (psetWithGuid) {
-            guid = psetWithGuid._guid.value;
-          }
-        }
-        const tipus = "IFCDOOR";
-        let subtipus = undefined;
-        let ubicacio = undefined;
-        let from_room = undefined;
-        let to_room = undefined;
-        let marca = undefined;
-
-        if (psets && Array.isArray(psets)) {
-          for (const pset of psets) {
-            if (Array.isArray(pset.HasProperties)) {
-              for (const prop of pset.HasProperties) {
-                const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
-                const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
-                if (!subtipus && (propName === 'CSPT_FM_Subtipus' || propName === 'subtipus')) subtipus = propValue;
-                if (!ubicacio && (propName === 'CSPT_FM_HabitacioCodi' || propName === 'ubicacio')) ubicacio = propValue;
-                if (!edifici && propName === 'CSPT_FM_HabitacioEdifici') edifici = propValue;
-                if (!planta && propName === 'CSPT_FM_HabitacioPlanta') planta = propValue;
-                if (!from_room && propName === 'FromRoom') from_room = propValue;
-                if (!to_room && propName === 'ToRoom') to_room = propValue;
-                if (!marca && propName === 'Marca') marca = propValue;
-              }
+      console.log('[FragImporter] Datos de espacios obtenidos:', spacesData);
+      
+      // Logging siguiendo el ejemplo oficial
+      spacesData.forEach((space, index) => {
+        console.log(`\n=== ESPACIO ${index + 1} ===`);
+        
+        // 1. Mostrar todos los atributos
+        console.log('ATRIBUTOS:', space);
+        
+        // 2. Mostrar property sets formateados (siguiendo el ejemplo oficial)
+        if (space.IsDefinedBy && Array.isArray(space.IsDefinedBy)) {
+          const formattedPsets: Record<string, Record<string, any>> = {};
+          for (const pset of space.IsDefinedBy) {
+            const { Name: psetName, HasProperties } = pset;
+            if (!(psetName && 'value' in psetName && Array.isArray(HasProperties))) continue;
+            const props: Record<string, any> = {};
+            for (const prop of HasProperties) {
+              const { Name, NominalValue } = prop;
+              if (!(Name && 'value' in Name && NominalValue && 'value' in NominalValue)) continue;
+              const name = Name.value;
+              const nominalValue = NominalValue.value;
+              if (!(name && nominalValue !== undefined)) continue;
+              props[name] = nominalValue;
             }
+            formattedPsets[psetName.value] = props;
           }
+          console.log('PROPERTY SETS:', formattedPsets);
         }
-        // DEBUG: Mostrar el guid extraído para cada puerta
-        if (!guid || typeof guid !== 'string' || guid.length !== 22) {
-          console.warn('[FragImporter] GUID NO VÁLIDO extraído para puerta:', { guid, obj });
-        } else {
-          console.log('[FragImporter] GUID extraído para puerta:', guid);
-        }
-        return { guid, tipus, subtipus, ubicacio, edifici, planta, from_room, to_room, marca };
       });
 
-// Para actius
-const actiusPuertas = puertasProcesadas.map(({ guid, tipus, subtipus, ubicacio, edifici, planta }) => ({ guid, tipus, subtipus, ubicacio, edifici, planta }));
-
-// Para ifcdoor
-const ifcDoors = puertasProcesadas.map(({ guid, from_room, to_room }) => ({ guid, from_room, to_room }));
-
-// Para ifcdoor_fire: solo puertas con subtipus==='PortaTallafoc' y marca
-const ifcDoorFire = puertasProcesadas
-  .filter(p => p.subtipus === 'PortaTallafoc' && p.marca)
-  .map(({ guid, marca }) => ({ guid, marca }));
 
 
-      // Array para tabla ifcdoor_fire (limpio, sin subtipus ni marca)
-      
 
-      // 3c. Obtener los sanitarios (IFCSANITARYTERMINAL)
-      const sanitaryTerminals = await model.getItemsOfCategory("IFCSANITARYTERMINAL");
-      const sanitaryLocalIds = (
-        await Promise.all(sanitaryTerminals.map((item: any) => item.getLocalId()))
-      ).filter((id: number | null) => id !== null) as number[];
-      const sanitaryData = await model.getItemsData(sanitaryLocalIds, {
-        attributesDefault: true,
-        relations: {
-          IsDefinedBy: { attributes: true, relations: true },
-          IsTypedBy: { attributes: true, relations: true }
-        }
-      });
-      const sanitariosProcesados = sanitaryData.map((obj: any) => {
-        let guid = '';
-        let edifici = '';
-        let planta = '';
-        // 1. Intenta usar el GlobalId directo
-        if (obj.GlobalId) {
-          guid = obj.GlobalId;
-        } else if (obj.globalId) {
-          guid = obj.globalId;
-        } else if (obj.guid) {
-          guid = obj.guid;
-        } else if (obj._guid && obj._guid.value) {
-          guid = obj._guid.value;
-        }
-        // 2. Si no, busca en los psets el IfcGUID y otros atributos
-        const psets = obj.IsDefinedBy as any[] | undefined;
-        if (!guid && psets && Array.isArray(psets)) {
-          const psetWithGuid = psets.find(pset => pset._guid && pset._guid.value);
-          if (psetWithGuid) {
-            guid = psetWithGuid._guid.value;
-          }
-        }
-        const tipus = "IFCSANITARYTERMINAL";
-        let subtipus = undefined;
-        let ubicacio = undefined;
-        if (psets && Array.isArray(psets)) {
-          for (const pset of psets) {
-            if (Array.isArray(pset.HasProperties)) {
-              for (const prop of pset.HasProperties) {
-                const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
-                const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
-                if (propName === 'CSPT_FM_Subtipus') {
-                  subtipus = propValue;
-                }
-                if (propName === 'CSPT_FM_HabitacioCodi') {
-                  ubicacio = propValue;
-                }
-                if (!edifici && propName === 'CSPT_FM_HabitacioEdifici') edifici = propValue;
-                if (!planta && propName === 'CSPT_FM_HabitacioPlanta') planta = propValue;
-              }
-            }
-          }
-        }
-        if (!subtipus && obj.IsTypedBy && obj.IsTypedBy.RelatingType && Array.isArray(obj.IsTypedBy.RelatingType.HasPropertySets)) {
-          for (const typePset of obj.IsTypedBy.RelatingType.HasPropertySets) {
-            if (Array.isArray(typePset.HasProperties)) {
-              for (const prop of typePset.HasProperties) {
-                const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
-                const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
-                if (propName === 'CSPT_FM_Subtipus') {
-                  subtipus = propValue;
-                }
-                if (propName === 'CSPT_FM_HabitacioCodi' && !ubicacio) {
-                  ubicacio = propValue;
-                }
-                if (!edifici && propName === 'CSPT_FM_HabitacioEdifici') edifici = propValue;
-                if (!planta && propName === 'CSPT_FM_HabitacioPlanta') planta = propValue;
-              }
-            }
-          }
-        }
-        // DEBUG: Mostrar el guid extraído para cada sanitario
-        if (!guid || typeof guid !== 'string' || guid.length !== 22) {
-          console.warn('[FragImporter] GUID NO VÁLIDO extraído para sanitario:', { guid, obj });
-        } else {
-          console.log('[FragImporter] GUID extraído para sanitario:', guid);
-        }
-        return { guid, tipus, subtipus, ubicacio, edifici, planta };
-      });
-      
-      console.log('PUERTAS PROCESADAS:', puertasProcesadas);
-      console.log('SANITARIOS PROCESADOS:', sanitariosProcesados);
-      
-      // Unir puertas y sanitarios 
-      const allActius = [...puertasProcesadas, ...sanitariosProcesados];
-      console.log('[FragImporter] Actius que se van a subir:', allActius);
-      setActiusProcesados(allActius);
-      
-      // 4. Procesar espacios y extraer atributos
-      const spaceLocalIds = spaces.map((item: any) => item._localId).filter((id: number | null) => id !== null);
-      const spaceData = await model.getItemsData(spaceLocalIds, {
-        attributesDefault: true,
-        relations: {
-          IsDefinedBy: { attributes: true, relations: true },
-          IsTypedBy: { attributes: true, relations: true }
-        }
-      });
-      const processedSpaces = spaceData.map((item: any) => {
+      // Procesar espacios después del logging detallado
+      const processedSpaces = spacesData.map((item: any, index: number) => {
         let dispositiu = '';
         let edifici = '';
         let planta = '';
+        let zona = '';
         let departament = '';
         let id = '';
         let centre_cost = '';
@@ -290,6 +175,9 @@ const ifcDoorFire = puertasProcesadas
               for (const prop of hasProperties) {
                 const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
                 const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
+                
+
+                
                 if (propName === 'CSPT_FM_HabitacioDispositiu' && propValue) dispositiu = propValue.toString();
                 if (propName === 'CSPT_FM_HabitacioEdifici' && propValue) edifici = propValue.toString();
                 if (propName === 'CSPT_FM_HabitacioPlanta' && propValue) planta = propValue.toString();
@@ -304,18 +192,20 @@ const ifcDoorFire = puertasProcesadas
               }
             }
           }
+
         }
         // DEBUG: Mostrar el guid extraído para cada espacio
         if (!guid || typeof guid !== 'string' || guid.length !== 22) {
           console.warn('[FragImporter] GUID NO VÁLIDO extraído para espacio:', { Name: item.Name?.value, guid, item });
         } else {
-          console.log('[FragImporter] GUID extraído para espacio:', guid);
+  
         }
         return {
           codi: item.Name?.value || '',
           dispositiu,
           edifici,
           planta,
+          zona,
           departament,
           id,
           centre_cost,
@@ -327,130 +217,61 @@ const ifcDoorFire = puertasProcesadas
       setIfcSpaces(processedSpaces);
       setStatus("Procesamiento completado.");
     } catch (error: any) {
+      console.error('[FragImporter] Error completo:', error);
+      console.error('[FragImporter] Stack trace:', error.stack);
       setStatus(`Error: ${error.message || error}`);
     }
   };
 
-
-
-// Reemplaza la función handleConfirmUpdate con esta versión corregida:
-
-async function handleConfirmUpdate() {
-  setStatus('Actualizando base de datos...');
-  try {
-    // Determina los valores comunes de tipus, subtipus y ubicacio
-    let tipusComun = null;
-    let subtipusComun = null;
-    let ubicacioComun = null;
-    if (actiusProcesados.length > 0) {
-      tipusComun = actiusProcesados[0].tipus;
-      subtipusComun = actiusProcesados[0].subtipus;
-      ubicacioComun = actiusProcesados[0].ubicacio;
-      // Verifica si todos los activos tienen el mismo valor para cada campo
-      for (const a of actiusProcesados) {
-        if (a.tipus !== tipusComun) tipusComun = null;
-        if (a.subtipus !== subtipusComun) subtipusComun = null;
-        if (a.ubicacio !== ubicacioComun) ubicacioComun = null;
-      }
-    }
-
-    // Crea el array de activos solo con los campos especiales
-    const actiusOptim = actiusProcesados.map(a => {
-      const obj: any = { ...a };
-      if (tipusComun !== null) delete obj.tipus;
-      if (subtipusComun !== null) delete obj.subtipus;
-      if (ubicacioComun !== null) delete obj.ubicacio;
-      return obj;
-    });
-
-    // Construye el payload optimizado
-    const payload: any = { actius: actiusOptim };
-    if (tipusComun !== null) payload.tipus = tipusComun;
-    if (subtipusComun !== null) payload.subtipus = subtipusComun;
-    if (ubicacioComun !== null) payload.ubicacio = ubicacioComun;
-
-    // Log para depuración
-    console.log('Payload optimizado a subir:', payload);
-
-    // Subir al backend
-    const responseActius = await fetch('/api/actius', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-    if (!responseActius.ok) {
-      let errorMsg = 'Error al guardar actius en el backend';
-      try {
-        const errorData = await responseActius.json();
-        errorMsg += ': ' + (errorData.error || JSON.stringify(errorData));
-      } catch {}
-      console.error(errorMsg);
-      throw new Error(errorMsg);
-    }
-    setStatus('Actius actualizados correctamente.');
-
-    // --- ACTUALIZAR HABITACIONES ---
-    // Mapear los datos de ifcSpaces al formato esperado por la API
-    const habitacionesPayload = ifcSpaces.map(space => ({
-      guid: space.guid || '', // OBLIGATORIO
-      // codi NO se envía, lo genera la base de datos
-      dispositiu: space.dispositiu || '', // OBLIGATORIO
-      edifici: space.edifici || '',       // OBLIGATORIO
-      planta: space.planta || '',         // OBLIGATORIO
-      departament: space.departament || '', // OBLIGATORIO
-      id: space.id || '',                 // OBLIGATORIO
-      centre_cost: space.centre_cost || '', // OBLIGATORIO
-      area: typeof space.area === 'number' ? space.area : 0 // OBLIGATORIO
-    }));
-
-    console.log('Enviando habitaciones:', habitacionesPayload);
-    console.log('Número de habitaciones a enviar:', habitacionesPayload.length);
-
-    const responseEsp = await fetch('/api/ifcspace', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ ifcSpaces: habitacionesPayload, confirmDelete: true })
-    });
-
-    console.log('Response status habitaciones:', responseEsp.status);
-    console.log('Response headers habitaciones:', responseEsp.headers);
-
-    const responseText = await responseEsp.text();
-    console.log('Response text habitaciones:', responseText);
-
-    if (!responseEsp.ok) {
-      let errorMsg = `Error al guardar habitaciones en el backend (${responseEsp.status})`;
-      try {
-        const errorData = JSON.parse(responseText);
-        errorMsg += ': ' + (errorData.error || JSON.stringify(errorData));
-      } catch {
-        errorMsg += ': ' + responseText;
-      }
-      console.error(errorMsg);
-      throw new Error(errorMsg);
-    }
-
-    // Intentar parsear la respuesta exitosa
-    let responseData;
+  // Función para confirmar actualización
+  async function handleConfirmUpdate() {
+    setStatus('Actualizando base de datos...');
     try {
-      responseData = JSON.parse(responseText);
-      console.log('Response data habitaciones:', responseData);
-    } catch {
-      console.log('Response no es JSON válido, pero fue exitosa');
-    }
+      // Actualizar habitaciones
+      const habitacionesPayload = ifcSpaces.map(space => ({
+        guid: space.guid || '',
+        dispositiu: space.dispositiu || '',
+        edifici: space.edifici || '',
+        planta: space.planta || '',
+        departament: space.departament || '',
+        id: space.id || '',
+        centre_cost: space.centre_cost || '',
+        area: typeof space.area === 'number' ? space.area : 0
+      }));
 
-    setStatus('Actius y habitaciones actualizados correctamente.');
-    setSummaryModalOpen(false);
-  } catch (err) {
-    console.error('Error completo:', err);
-    setStatus('Error actualizando actius, espacios o puertas cortafuego: ' + (err instanceof Error ? err.message : String(err)));
+      const responseEsp = await fetch('/api/ifcspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ ifcSpaces: habitacionesPayload, confirmDelete: true })
+      });
+
+      if (!responseEsp.ok) {
+        const errorText = await responseEsp.text();
+        throw new Error(`Error al guardar habitaciones (${responseEsp.status}): ${errorText}`);
+      }
+
+      setStatus('Habitaciones actualizadas correctamente.');
+      setSummaryModalOpen(false);
+    } catch (err) {
+      console.error('Error completo:', err);
+      setStatus('Error actualizando: ' + (err instanceof Error ? err.message : String(err)));
+    }
   }
-}
+
+
+  // Sort the spaces based on current sort settings
+  const sortedSpaces = [...ifcSpaces].sort((a, b) => {
+    if (!sortColumn) return 0;
+    const aVal = a[sortColumn] || '';
+    const bVal = b[sortColumn] || '';
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    }
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+    }
+    return 0;
+  });
 
   return (
     <div className="frag-table-container">
@@ -462,137 +283,92 @@ async function handleConfirmUpdate() {
         onChange={handleFileChange}
       />
       <div style={{ marginTop: 16 }}>{status}</div>
-      {/* Mostrar tabla de ifcSpaces si existen */}
+      
       {ifcSpaces.length > 0 && (
         <>
-           <button
-             className="frag-table-update-btn"
-             onClick={async () => {
-               setStatus('Calculando cambios pendientes...');
-               try {
-                 // 1. Obtener resumen de cambios para espacios
-                 const resEsp = await fetch('/api/ifcspace/summary', {
-                   method: 'POST',
-                   headers: { 'Content-Type': 'application/json' },
-                   body: JSON.stringify(ifcSpaces),
-                 });
-                 const summaryEsp = await resEsp.json();
-                 // 2. Obtener resumen de cambios para activos
-                 const resAct = await fetch('/api/actius/summary', {
-                   method: 'POST',
-                   headers: { 'Content-Type': 'application/json' },
-                   body: JSON.stringify(actiusProcesados),
-                 });
-                 const summaryAct = await resAct.json();
+          <button
+            className="frag-table-update-btn"
+            onClick={async () => {
+              setStatus('Calculando cambios pendientes...');
+              try {
+                const resEsp = await fetch('/api/ifcspace/summary', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(ifcSpaces),
+                });
+                const summaryEsp = await resEsp.json();
+                setUpdateSummary([
+                  {
+                    tipo: 'Espacios',
+                    nuevos: summaryEsp.nuevos,
+                    borrados: summaryEsp.borrados,
+                    modificados: summaryEsp.modificados,
+                    nuevosArr: summaryEsp.guidsNuevos,
+                    borradosArr: summaryEsp.guidsDB?.filter((g: string) => !summaryEsp.guidsNuevos?.includes(g)),
+                    modificadosArr: summaryEsp.modificadosArr
+                  }
+                ]);
+                setSummaryModalOpen(true);
+                setStatus('Cambios pendientes calculados.');
+              } catch (err: any) {
+                setStatus('Error al calcular los cambios: ' + (err.message || err));
+              }
+            }}
+          >
+            Actualizar tabla habitacions en base de datos
+          </button>
 
-                 // 3. Preparar resumen para el modal
-                 setUpdateSummary([
-                   {
-                     tipo: 'Espacios',
-                     nuevos: summaryEsp.nuevos,
-                     borrados: summaryEsp.borrados,
-                     modificados: summaryEsp.modificados,
-                     nuevosArr: summaryEsp.guidsNuevos,
-                     borradosArr: summaryEsp.guidsDB?.filter((g: string) => !summaryEsp.guidsNuevos?.includes(g)),
-                     modificadosArr: summaryEsp.modificadosArr
-                   },
-                   {
-                     tipo: 'Activos',
-                     nuevos: summaryAct.nuevos,
-                     borrados: summaryAct.borrados,
-                     modificados: summaryAct.modificados,
-                     nuevosArr: summaryAct.guidsNuevos,
-                     borradosArr: summaryAct.guidsDB?.filter((g: string) => !summaryAct.guidsNuevos?.includes(g)),
-                     modificadosArr: summaryAct.modificadosArr
-                   }
-                 ]);
-                 setSummaryModalOpen(true);
-                 setStatus('Cambios pendientes calculados.');
-               } catch (err: any) {
-                 setStatus('Error al calcular los cambios: ' + (err.message || err));
-               }
-             }}
-           >
-             Actualizar tabla habitacions en base de datos
-           </button>
-
-           <UpdateSummaryModal
+          <UpdateSummaryModal
             open={summaryModalOpen}
             resumen={updateSummary}
-            actiusProcesados={actiusProcesados}
+            actiusProcesados={[]}
             ifcSpaces={ifcSpaces}
             onCancel={() => {
               setSummaryModalOpen(false);
-               setStatus('Actualización cancelada por el usuario.');
-             }}
-             onConfirm={handleConfirmUpdate}
-           />
-          <h3>Habitaciones extraídas del FRAG</h3>
-          <table className="frag-table">
+              setStatus('Actualización cancelada por el usuario.');
+            }}
+            onConfirm={handleConfirmUpdate}
+          />
+
+          <h3>Habitaciones importadas</h3>
+          <table className="habitacions-table">
             <thead>
               <tr>
-                <th className="c-guid" onClick={() => handleSort('guid')} style={{cursor:'pointer'}}>
-                  Guid {sortColumn === 'guid' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-codi" onClick={() => handleSort('codi')} style={{cursor:'pointer'}}>
-                  Codi {sortColumn === 'codi' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-edifici" onClick={() => handleSort('edifici')} style={{cursor:'pointer'}}>
-                  Edifici {sortColumn === 'edifici' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-planta" onClick={() => handleSort('planta')} style={{cursor:'pointer'}}>
-                  Planta {sortColumn === 'planta' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-departament" onClick={() => handleSort('departament')} style={{cursor:'pointer'}}>
-                  Departament {sortColumn === 'departament' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-dispositiu" onClick={() => handleSort('dispositiu')} style={{cursor:'pointer'}}>
-                  Dispositiu {sortColumn === 'dispositiu' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-habitacioid" onClick={() => handleSort('id')} style={{cursor:'pointer'}}>
-                  ID {sortColumn === 'id' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-centre_cost" onClick={() => handleSort('centre_cost')} style={{cursor:'pointer'}}>
-                  CCost {sortColumn === 'centre_cost' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="c-area" onClick={() => handleSort('area')} style={{cursor:'pointer'}}>
-                  Área(m²) {sortColumn === 'area' ? (sortDirection === 'asc' ? '▲' : '▼') : ''}
-                </th>
+                <th onClick={() => handleSort('codi')}>Codi</th>
+                <th onClick={() => handleSort('edifici')}>Edifici</th>
+                <th onClick={() => handleSort('planta')}>Planta</th>
+                <th onClick={() => handleSort('departament')}>Departament</th>
+                <th onClick={() => handleSort('id')}>ID</th>
+                <th onClick={() => handleSort('centre_cost')}>Centre Cost</th>
+                <th>GUID</th>
+                <th>Area</th>
               </tr>
             </thead>
             <tbody>
-              {[...ifcSpaces]
-                .map((h, idx) => ({ ...h, _idx: idx }))
-                .sort((a, b) => {
-                  if (!sortColumn) return a._idx - b._idx;
-                  let valA = a[sortColumn];
-                  let valB = b[sortColumn];
-                  // For undefined/null values, treat as empty string/zero
-                  if (valA === undefined || valA === null) valA = '';
-                  if (valB === undefined || valB === null) valB = '';
-                  if (typeof valA === 'number' && typeof valB === 'number') {
-                    return sortDirection === 'asc' ? valA - valB : valB - valA;
-                  }
-                  return sortDirection === 'asc'
-                    ? String(valA).localeCompare(String(valB), undefined, { numeric: true })
-                    : String(valB).localeCompare(String(valA), undefined, { numeric: true });
-                })
-                .map((h, idx) => {
-                const isCodiDuplicate = h.codi && codiCounts[h.codi] > 1;
+              {sortedSpaces.map((h, idx) => {
+                const originalIdx = ifcSpaces.findIndex(space => space.guid === h.guid);
+                const isDuplicateCodi = h.codi && codiCounts[h.codi] > 1;
                 return (
                   <tr key={h.guid || idx}>
-                    <td className={"c-guid " + (h.guid ? "cell-noneditable" : "cell-empty")}>{h.guid || ''}</td>
-                    <td className={"c-codi " + ((!h.codi ? "cell-empty " : "") + (isCodiDuplicate ? "cell-codi-duplicate" : "cell-noneditable"))}>{h.codi || ''}</td>
+                    <td className="c-codi">
+                      <input
+                        className={`${h.codi ? "cell-editable" : "cell-empty cell-editable"} ${isDuplicateCodi ? "cell-duplicate" : ""}`}
+                        value={h.codi || ''}
+                        onChange={e => {
+                          const newSpaces = [...ifcSpaces];
+                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], codi: e.target.value };
+                          setIfcSpaces(newSpaces);
+                        }}
+                      />
+                    </td>
                     <td className="c-edifici">
                       <input
                         className={h.edifici ? "cell-editable" : "cell-empty cell-editable"}
                         value={h.edifici || ''}
                         onChange={e => {
-                          const newIfcSpaces = [...ifcSpaces];
-                          const newEdifici = e.target.value;
-                          const codi = [newEdifici, newIfcSpaces[idx].planta || '', newIfcSpaces[idx].id || ''].filter(Boolean).join('-');
-                          newIfcSpaces[idx] = { ...newIfcSpaces[idx], edifici: newEdifici, codi };
-                          setIfcSpaces(newIfcSpaces);
+                          const newSpaces = [...ifcSpaces];
+                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], edifici: e.target.value };
+                          setIfcSpaces(newSpaces);
                         }}
                       />
                     </td>
@@ -601,10 +377,9 @@ async function handleConfirmUpdate() {
                         className={h.planta ? "cell-editable" : "cell-empty cell-editable"}
                         value={h.planta || ''}
                         onChange={e => {
-                          const newIfcSpaces = [...ifcSpaces];
-                          const newPlanta = e.target.value;
-                          newIfcSpaces[idx] = { ...newIfcSpaces[idx], planta: newPlanta, codi: [newIfcSpaces[idx].edifici || '', newPlanta, newIfcSpaces[idx].id || ''].filter(Boolean).join('-') };
-                          setIfcSpaces(newIfcSpaces);
+                          const newSpaces = [...ifcSpaces];
+                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], planta: e.target.value };
+                          setIfcSpaces(newSpaces);
                         }}
                       />
                     </td>
@@ -613,32 +388,20 @@ async function handleConfirmUpdate() {
                         className={h.departament ? "cell-editable" : "cell-empty cell-editable"}
                         value={h.departament || ''}
                         onChange={e => {
-                          const newIfcSpaces = [...ifcSpaces];
-                          newIfcSpaces[idx] = { ...newIfcSpaces[idx], departament: e.target.value };
-                          setIfcSpaces(newIfcSpaces);
+                          const newSpaces = [...ifcSpaces];
+                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], departament: e.target.value };
+                          setIfcSpaces(newSpaces);
                         }}
                       />
                     </td>
-                    <td className="c-dispositiu">
-                      <input
-                        className={h.dispositiu ? "cell-editable" : "cell-empty cell-editable"}
-                        value={h.dispositiu || ''}
-                        onChange={e => {
-                          const newIfcSpaces = [...ifcSpaces];
-                          newIfcSpaces[idx] = { ...newIfcSpaces[idx], dispositiu: e.target.value };
-                          setIfcSpaces(newIfcSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-habitacioid">
+                    <td className="c-id">
                       <input
                         className={h.id ? "cell-editable" : "cell-empty cell-editable"}
                         value={h.id || ''}
                         onChange={e => {
-                          const newIfcSpaces = [...ifcSpaces];
-                          const newId = e.target.value;
-                          newIfcSpaces[idx] = { ...newIfcSpaces[idx], id: newId, codi: [newIfcSpaces[idx].edifici || '', newIfcSpaces[idx].planta || '', newId].filter(Boolean).join('-') };
-                          setIfcSpaces(newIfcSpaces);
+                          const newSpaces = [...ifcSpaces];
+                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], id: e.target.value };
+                          setIfcSpaces(newSpaces);
                         }}
                       />
                     </td>
@@ -647,15 +410,14 @@ async function handleConfirmUpdate() {
                         className={h.centre_cost ? "cell-editable" : "cell-empty cell-editable"}
                         value={h.centre_cost || ''}
                         onChange={e => {
-                          const newIfcSpaces = [...ifcSpaces];
-                          newIfcSpaces[idx] = { ...newIfcSpaces[idx], centre_cost: e.target.value };
-                          setIfcSpaces(newIfcSpaces);
+                          const newSpaces = [...ifcSpaces];
+                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], centre_cost: e.target.value };
+                          setIfcSpaces(newSpaces);
                         }}
                       />
                     </td>
-                    <td className={"c-area " + (h.area === undefined || h.area === null || isNaN(Number(h.area)) ? "cell-empty cell-readonly" : "cell-readonly") }>
-                      {typeof h.area === 'number' && !isNaN(h.area) ? h.area.toFixed(2) : ''}
-                    </td>
+                    <td className="c-guid cell-noneditable">{h.guid || ''}</td>
+                    <td className="c-area cell-noneditable">{h.area || ''}</td>
                   </tr>
                 );
               })}

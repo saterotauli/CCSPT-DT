@@ -61,6 +61,7 @@ export const updateActius = async (req: Request, res: Response) => {
           subtipus: actiu.subtipus,
           edifici: actiu.edifici,
           planta: actiu.planta,
+          zona: actiu.zona,
           ubicacio: actiu.ubicacio, // Solo CSPT_FM_HabitacioID
         },
         create: {
@@ -69,6 +70,7 @@ export const updateActius = async (req: Request, res: Response) => {
           subtipus: actiu.subtipus,
           edifici: actiu.edifici,
           planta: actiu.planta,
+          zona: actiu.zona,
           ubicacio: actiu.ubicacio, // Solo CSPT_FM_HabitacioID
         }
       });
@@ -189,7 +191,7 @@ export const summaryActius = async (req: Request, res: Response) => {
     const guidsNuevos = actius.map((a: any) => a.guid);
     // --- FILTRADO POR EDIFICIO ---
     const edificio = actius[0]?.edifici;
-    const actiusDB: any[] = await prisma.actius.findMany({ select: { guid: true, tipus: true, subtipus: true, ubicacio: true, edifici: true } });
+    const actiusDB: any[] = await prisma.actius.findMany({ select: { guid: true, tipus: true, subtipus: true, ubicacio: true, edifici: true, planta: true, zona: true } });
     const actiusDBEdificio = edificio ? actiusDB.filter((a: any) => a.edifici === edificio) : actiusDB;
     console.log(`Hay ${actiusDBEdificio.length} actius en la base de datos para el edificio ${edificio}`);
     const guidsDB = actiusDBEdificio.map((a: any) => a.guid);
@@ -206,7 +208,10 @@ export const summaryActius = async (req: Request, res: Response) => {
       return (
         db.tipus !== a.tipus ||
         db.subtipus !== a.subtipus ||
-        db.ubicacio !== a.ubicacio
+        db.ubicacio !== a.ubicacio ||
+        db.edifici !== a.edifici ||
+        db.planta !== a.planta ||
+        db.zona !== a.zona
       );
     }).map((a: any) => a.guid);
     const modificados = modificadosArr.length;
@@ -216,7 +221,10 @@ export const summaryActius = async (req: Request, res: Response) => {
       return (
         db.tipus !== a.tipus ||
         db.subtipus !== a.subtipus ||
-        db.ubicacio !== a.ubicacio
+        db.ubicacio !== a.ubicacio ||
+        db.edifici !== a.edifici ||
+        db.planta !== a.planta ||
+        db.zona !== a.zona
       );
     }).slice(0, 5).map((a: any) => a.guid)}`);
     res.json({ nuevos, borrados, modificados, guidsNuevos, guidsDB, modificadosArr });

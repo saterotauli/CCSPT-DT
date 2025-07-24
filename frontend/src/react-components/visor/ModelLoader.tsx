@@ -9,9 +9,10 @@ import ClassifierExample from './ClassifierExample';
 
 interface ModelLoaderProps {
   buildingFile: string; // Nombre del archivo de fragmentos a cargar
+  onComponentsReady?: (components: OBC.Components | null, isInitialized: boolean) => void;
 }
 
-const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile }) => {
+const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsReady }) => {
   // Estado para el mundo 3D
   const [world, setWorld] = useState<OBC.World | null>(null);
   // Estado para los niveles detectados
@@ -171,6 +172,11 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile }) => {
         }
 
         setIsInitialized(true);
+        
+        // Notificar que los componentes están listos
+        if (onComponentsReady) {
+          onComponentsReady(componentsInstance, true);
+        }
       } catch (error) {
         console.error("Error durante la inicialización:", error);
       }

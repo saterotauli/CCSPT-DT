@@ -226,7 +226,7 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
     <div className="bim-panel" style={{ 
       position: 'absolute', 
       top: '80px',
-      left: '600px', 
+      left: '340px', 
       backgroundColor: 'white', 
       borderRadius: '8px',
       padding: '15px',

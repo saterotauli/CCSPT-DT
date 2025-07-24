@@ -56,9 +56,10 @@ model actius {
   guid     String   @unique
   tipus    String
   subtipus String?
-  edifici  String?  // Nuevo campo para el edificio
-  planta   String?  // Nuevo campo para la planta
-  ubicacio String?  // Ahora solo contendrá CSPT_FM_HabitacioID
+  edifici  String?  
+  planta   String?  
+  zona     String?
+  ubicacio String?
 
   ifcdoor  ifcdoor?
 

@@ -2,6 +2,8 @@ import React from "react";
 import ModelLoader from "./ModelLoader";
 import ConsultaBox from "./ConsultaBox";
 import ElementInfoPanel from "./ElementInfoPanel";
+import DisciplineFilter from "./DisciplineFilter";
+import * as OBC from "@thatopen/components";
 import "./visor3d.css";
 
 const buildings = [
@@ -32,6 +34,10 @@ const VisorPage: React.FC = () => {
   const [isDisciplineDropdownOpen, setIsDisciplineDropdownOpen] = React.useState<boolean>(false);
   const [consultaHeight, setConsultaHeight] = React.useState<number>(30); // Porcentaje de altura para Consulta IA
   const [isResizing, setIsResizing] = React.useState<boolean>(false);
+  
+  // Estado para los componentes de ThatOpen y su inicialización
+  const [components, setComponents] = React.useState<OBC.Components | null>(null);
+  const [isInitialized, setIsInitialized] = React.useState<boolean>(false);
 
   // Encontrar el archivo del edificio seleccionado
   const selectedBuildingFile = buildings.find(b => b.value === selectedBuilding)?.file || "";
@@ -53,6 +59,16 @@ const VisorPage: React.FC = () => {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [isBuildingDropdownOpen, isDisciplineDropdownOpen]);
+
+  // Callback para recibir los componentes desde ModelLoader
+  const handleComponentsReady = React.useCallback((comps: OBC.Components | null, initialized: boolean) => {
+    console.log("VisorPage: handleComponentsReady ejecutado:", {
+      components: !!comps,
+      initialized
+    });
+    setComponents(comps);
+    setIsInitialized(initialized);
+  }, []);
 
   // Manejo del redimensionado del divisor
   const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
@@ -327,6 +343,14 @@ const VisorPage: React.FC = () => {
           {/* ModelLoader se encarga de montar el visor 3D en el contenedor */}
           <ModelLoader 
             buildingFile={selectedBuildingFile}
+            onComponentsReady={handleComponentsReady}
+          />
+          
+          {/* DisciplineFilter maneja el filtrado por disciplina */}
+          <DisciplineFilter 
+            selectedDiscipline={selectedDiscipline}
+            components={components}
+            isInitialized={isInitialized}
           />
         </div>
 
