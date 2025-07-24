@@ -3,6 +3,46 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// GET /api/ifcspace/search?departament=valor&edificio=CQA
+export const buscarPorDepartamento = async (req: Request, res: Response) => {
+  try {
+    const { departament, edificio } = req.query;
+    
+    if (!departament || typeof departament !== 'string') {
+      return res.status(400).json({ error: 'Parámetro departament requerido' });
+    }
+    
+    if (departament.trim().length < 3) {
+      return res.status(400).json({ error: 'Mínimo 3 caracteres para buscar' });
+    }
+    
+    let ifcSpaces;
+    
+    if (edificio && typeof edificio === 'string') {
+      // Buscar solo en el edificio especificado
+      ifcSpaces = await prisma.$queryRaw`
+        SELECT guid, codi, dispositiu, edifici, planta, departament, area 
+        FROM "patrimoni"."ifcspace" 
+        WHERE LOWER(departament) LIKE LOWER(${`%${departament}%`})
+        AND edifici = ${edificio}
+        ORDER BY departament, codi ASC
+      `;
+    } else {
+      // Buscar en todos los edificios
+      ifcSpaces = await prisma.$queryRaw`
+        SELECT guid, codi, dispositiu, edifici, planta, departament, area 
+        FROM "patrimoni"."ifcspace" 
+        WHERE LOWER(departament) LIKE LOWER(${`%${departament}%`})
+        ORDER BY edifici, departament, codi ASC
+      `;
+    }
+    
+    res.json(ifcSpaces);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Error al buscar por departamento', details: err.message });
+  }
+};
+
 // GET /api/ifcspace
 export const getHabitacions = async (req: Request, res: Response) => {
   try {

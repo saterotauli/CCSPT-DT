@@ -1,8 +1,10 @@
 import express from 'express';
-import { updateHabitacions, getHabitacions } from '../controllers/habitacioController';
+import { updateHabitacions, getHabitacions, buscarPorDepartamento } from '../controllers/habitacioController';
 
 const router = express.Router();
 
+// GET /api/ifcspace/search?departament=valor
+router.get('/ifcspace/search', buscarPorDepartamento);
 // GET /api/ifcspace
 router.get('/ifcspace', getHabitacions);
 // POST /api/ifcspace

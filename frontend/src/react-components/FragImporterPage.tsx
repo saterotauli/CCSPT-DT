@@ -1,8 +1,6 @@
-import React, { useRef, useState } from "react";
-import * as FRAGS from "@thatopen/fragments";
-import "./FragImporterPage.css";
-
-import UpdateSummaryModal from "./UpdateSummaryModal";
+import React, { useState, useRef } from 'react';
+import * as FRAGS from '@thatopen/fragments';
+import './FragImporterPage.css';
 
 interface HabitacionIFC {
   codi: string;
@@ -16,31 +14,25 @@ interface HabitacionIFC {
   area?: number;
 }
 
+interface ActiuIFC {
+  guid: string;
+  tipus: string;
+  subtipus: string;
+  edifici: string;
+  planta: string;
+  zona: string;
+  ubicacio: string;
+}
+
 const FragImporterPage: React.FC = () => {
-  // Estados para el modal de resumen
-  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
-  const [updateSummary, setUpdateSummary] = useState<any[]>([]);
+  const [searchDept, setSearchDept] = useState<string>('');
+  // Estado para el popup de tabla detallada
+  const [tablePopupOpen, setTablePopupOpen] = useState(false);
+  const [actiusPopupOpen, setActiusPopupOpen] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [ifcSpaces, setIfcSpaces] = useState<HabitacionIFC[]>([]);
-  const [sortColumn, setSortColumn] = useState<keyof HabitacionIFC | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [ifcDoors, setIfcDoors] = useState<ActiuIFC[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Sorting handler
-  function handleSort(column: keyof HabitacionIFC) {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('asc');
-    }
-  }
-
-  // Calcular codis duplicados para la tabla
-  const codiCounts = ifcSpaces.reduce((acc: Record<string, number>, h) => {
-    if (h.codi) acc[h.codi] = (acc[h.codi] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -108,17 +100,28 @@ const FragImporterPage: React.FC = () => {
       });
       console.log('[FragImporter] Datos de espacios obtenidos:', spacesData);
       
-      // Logging siguiendo el ejemplo oficial
-      spacesData.forEach((space, index) => {
-        console.log(`\n=== ESPACIO ${index + 1} ===`);
-        
+      // Obtener puertas (IFCDOOR)
+      const doorCategories = await model.getItemsOfCategories([/IFCDOOR/]);
+      const doorLocalIds = Object.values(doorCategories).flat();
+      console.log('[FragImporter] LocalIds de puertas encontrados:', doorLocalIds);
+      
+      const doorsData = await model.getItemsData(doorLocalIds, {
+        attributesDefault: true,
+        relations: {
+          IsDefinedBy: { attributes: true, relations: true }
+        }
+      });
+      console.log('[FragImporter] Datos de puertas obtenidos:', doorsData);
+      
+      // Logging SOLO para puertas (IFCDOOR)
+      doorsData.forEach((item: any, index: number) => {
+        console.log(`\n=== PUERTA (IFCDOOR) ${index + 1} ===`);
         // 1. Mostrar todos los atributos
-        console.log('ATRIBUTOS:', space);
-        
-        // 2. Mostrar property sets formateados (siguiendo el ejemplo oficial)
-        if (space.IsDefinedBy && Array.isArray(space.IsDefinedBy)) {
+        console.log('ATRIBUTOS:', item);
+        // 2. Mostrar property sets formateados
+        if (item.IsDefinedBy && Array.isArray(item.IsDefinedBy)) {
           const formattedPsets: Record<string, Record<string, any>> = {};
-          for (const pset of space.IsDefinedBy) {
+          for (const pset of item.IsDefinedBy) {
             const { Name: psetName, HasProperties } = pset;
             if (!(psetName && 'value' in psetName && Array.isArray(HasProperties))) continue;
             const props: Record<string, any> = {};
@@ -136,11 +139,8 @@ const FragImporterPage: React.FC = () => {
         }
       });
 
-
-
-
       // Procesar espacios después del logging detallado
-      const processedSpaces = spacesData.map((item: any, index: number) => {
+      const processedSpaces = spacesData.map((item: any) => {
         let dispositiu = '';
         let edifici = '';
         let planta = '';
@@ -213,9 +213,71 @@ const FragImporterPage: React.FC = () => {
           area,
         };
       });
-      //console.log("Habitaciones extraídas del FRAG:", processedSpaces);
+      
+      // Procesar puertas después del logging detallado
+      const processedDoors = doorsData.map((item: any) => {
+        let guid = '';
+        let tipus = 'IFCDOOR';
+        let subtipus = '';
+        let edifici = '';
+        let planta = '';
+        let zona = '';
+        let ubicacio = '';
+        
+        // Extraer GUID
+        if (item.GlobalId) {
+          guid = item.GlobalId;
+        } else if (item.globalId) {
+          guid = item.globalId;
+        } else if (item.guid) {
+          guid = item.guid;
+        } else if (item._guid && item._guid.value) {
+          guid = item._guid.value;
+        }
+        
+        // Extraer propiedades de los psets
+        const psets = item.IsDefinedBy as any[] | undefined;
+        if (psets && Array.isArray(psets)) {
+          for (const pset of psets) {
+            const hasProperties = pset.HasProperties;
+            if (Array.isArray(hasProperties)) {
+              for (const prop of hasProperties) {
+                const propName = prop.Name && 'value' in prop.Name ? prop.Name.value : undefined;
+                const propValue = prop.NominalValue && 'value' in prop.NominalValue ? prop.NominalValue.value : undefined;
+                
+                if (propName === 'CSPT_FM_Subtipus' && propValue) subtipus = propValue.toString();
+                if (propName === 'CSPT_FM_HabitacioCodi' && propValue) ubicacio = propValue.toString();
+                if (propName === 'CSPT_FM_HabitacioEdifici' && propValue) edifici = propValue.toString();
+                if (propName === 'CSPT_FM_HabitacioPlanta' && propValue) planta = propValue.toString();
+                if (propName === 'CSPT_FM_HabitacioZona' && propValue) zona = propValue.toString();
+              }
+            }
+          }
+        }
+        
+        // Extraer edifici, planta y zona a partir de ubicacio si tiene el formato esperado
+        if (ubicacio && typeof ubicacio === 'string') {
+          const parts = ubicacio.split('-');
+          if (parts.length >= 3) {
+            edifici = parts[0].slice(0, 3);
+            planta = parts[1].slice(0, 3);
+            zona = parts[2].slice(0, 3);
+          }
+        }
+        return {
+          guid: guid || '',
+          tipus,
+          subtipus,
+          edifici,
+          planta,
+          zona,
+          ubicacio
+        };
+      });
+      
       setIfcSpaces(processedSpaces);
-      setStatus("Procesamiento completado.");
+      setIfcDoors(processedDoors);
+      setStatus(`Procesamiento completado. ${processedSpaces.length} habitaciones y ${processedDoors.length} puertas importadas.`);
     } catch (error: any) {
       console.error('[FragImporter] Error completo:', error);
       console.error('[FragImporter] Stack trace:', error.stack);
@@ -223,26 +285,27 @@ const FragImporterPage: React.FC = () => {
     }
   };
 
-  // Función para confirmar actualización
-  async function handleConfirmUpdate() {
+  // Función para actualizar base de datos de habitaciones
+  async function handleUpdateDatabase() {
     setStatus('Actualizando base de datos...');
     try {
       // Actualizar habitaciones
-      const habitacionesPayload = ifcSpaces.map(space => ({
+      const habitacionesPayload = ifcSpaces.map((space: HabitacionIFC) => ({
         guid: space.guid || '',
-        dispositiu: space.dispositiu || '',
+        codi: space.codi || '',
         edifici: space.edifici || '',
         planta: space.planta || '',
         departament: space.departament || '',
+        dispositiu: space.dispositiu || '',
         id: space.id || '',
         centre_cost: space.centre_cost || '',
-        area: typeof space.area === 'number' ? space.area : 0
+        area: space.area || 0
       }));
 
       const responseEsp = await fetch('/api/ifcspace', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ ifcSpaces: habitacionesPayload, confirmDelete: true })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(habitacionesPayload)
       });
 
       if (!responseEsp.ok) {
@@ -251,27 +314,45 @@ const FragImporterPage: React.FC = () => {
       }
 
       setStatus('Habitaciones actualizadas correctamente.');
-      setSummaryModalOpen(false);
     } catch (err) {
       console.error('Error completo:', err);
-      setStatus('Error actualizando: ' + (err instanceof Error ? err.message : String(err)));
+      setStatus('Error: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  }
+  
+  // Función para actualizar base de datos de actius (puertas)
+  async function handleUpdateActius() {
+    setStatus('Actualizando tabla actius...');
+    try {
+      const actiusPayload = ifcDoors.map((door: ActiuIFC) => ({
+        guid: door.guid || '',
+        tipus: door.tipus || '',
+        subtipus: door.subtipus || '',
+        edifici: door.edifici || '',
+        planta: door.planta || '',
+        zona: door.zona || '',
+        ubicacio: door.ubicacio || ''
+      }));
+
+      const responseActius = await fetch('/api/actius', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actius: actiusPayload })
+      });
+
+      if (!responseActius.ok) {
+        const errorText = await responseActius.text();
+        throw new Error(`Error al guardar actius (${responseActius.status}): ${errorText}`);
+      }
+
+      setStatus('Actius actualizados correctamente.');
+    } catch (err) {
+      console.error('Error completo:', err);
+      setStatus('Error: ' + (err instanceof Error ? err.message : String(err)));
     }
   }
 
 
-  // Sort the spaces based on current sort settings
-  const sortedSpaces = [...ifcSpaces].sort((a, b) => {
-    if (!sortColumn) return 0;
-    const aVal = a[sortColumn] || '';
-    const bVal = b[sortColumn] || '';
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-    }
-    if (typeof aVal === 'number' && typeof bVal === 'number') {
-      return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
-    }
-    return 0;
-  });
 
   return (
     <div className="frag-table-container">
@@ -284,146 +365,280 @@ const FragImporterPage: React.FC = () => {
       />
       <div style={{ marginTop: 16 }}>{status}</div>
       
-      {ifcSpaces.length > 0 && (
+      {(ifcSpaces.length > 0 || ifcDoors.length > 0) && (
         <>
-          <button
-            className="frag-table-update-btn"
-            onClick={async () => {
-              setStatus('Calculando cambios pendientes...');
-              try {
-                const resEsp = await fetch('/api/ifcspace/summary', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(ifcSpaces),
-                });
-                const summaryEsp = await resEsp.json();
-                setUpdateSummary([
-                  {
-                    tipo: 'Espacios',
-                    nuevos: summaryEsp.nuevos,
-                    borrados: summaryEsp.borrados,
-                    modificados: summaryEsp.modificados,
-                    nuevosArr: summaryEsp.guidsNuevos,
-                    borradosArr: summaryEsp.guidsDB?.filter((g: string) => !summaryEsp.guidsNuevos?.includes(g)),
-                    modificadosArr: summaryEsp.modificadosArr
-                  }
-                ]);
-                setSummaryModalOpen(true);
-                setStatus('Cambios pendientes calculados.');
-              } catch (err: any) {
-                setStatus('Error al calcular los cambios: ' + (err.message || err));
-              }
-            }}
-          >
-            Actualizar tabla habitacions en base de datos
-          </button>
-
-          <UpdateSummaryModal
-            open={summaryModalOpen}
-            resumen={updateSummary}
-            actiusProcesados={[]}
-            ifcSpaces={ifcSpaces}
-            onCancel={() => {
-              setSummaryModalOpen(false);
-              setStatus('Actualización cancelada por el usuario.');
-            }}
-            onConfirm={handleConfirmUpdate}
-          />
-
-          <h3>Habitaciones importadas</h3>
-          <table className="habitacions-table">
-            <thead>
-              <tr>
-                <th onClick={() => handleSort('codi')}>Codi</th>
-                <th onClick={() => handleSort('edifici')}>Edifici</th>
-                <th onClick={() => handleSort('planta')}>Planta</th>
-                <th onClick={() => handleSort('departament')}>Departament</th>
-                <th onClick={() => handleSort('id')}>ID</th>
-                <th onClick={() => handleSort('centre_cost')}>Centre Cost</th>
-                <th>GUID</th>
-                <th>Area</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedSpaces.map((h, idx) => {
-                const originalIdx = ifcSpaces.findIndex(space => space.guid === h.guid);
-                const isDuplicateCodi = h.codi && codiCounts[h.codi] > 1;
-                return (
-                  <tr key={h.guid || idx}>
-                    <td className="c-codi">
-                      <input
-                        className={`${h.codi ? "cell-editable" : "cell-empty cell-editable"} ${isDuplicateCodi ? "cell-duplicate" : ""}`}
-                        value={h.codi || ''}
-                        onChange={e => {
-                          const newSpaces = [...ifcSpaces];
-                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], codi: e.target.value };
-                          setIfcSpaces(newSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-edifici">
-                      <input
-                        className={h.edifici ? "cell-editable" : "cell-empty cell-editable"}
-                        value={h.edifici || ''}
-                        onChange={e => {
-                          const newSpaces = [...ifcSpaces];
-                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], edifici: e.target.value };
-                          setIfcSpaces(newSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-planta">
-                      <input
-                        className={h.planta ? "cell-editable" : "cell-empty cell-editable"}
-                        value={h.planta || ''}
-                        onChange={e => {
-                          const newSpaces = [...ifcSpaces];
-                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], planta: e.target.value };
-                          setIfcSpaces(newSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-departament">
-                      <input
-                        className={h.departament ? "cell-editable" : "cell-empty cell-editable"}
-                        value={h.departament || ''}
-                        onChange={e => {
-                          const newSpaces = [...ifcSpaces];
-                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], departament: e.target.value };
-                          setIfcSpaces(newSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-id">
-                      <input
-                        className={h.id ? "cell-editable" : "cell-empty cell-editable"}
-                        value={h.id || ''}
-                        onChange={e => {
-                          const newSpaces = [...ifcSpaces];
-                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], id: e.target.value };
-                          setIfcSpaces(newSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-centre_cost">
-                      <input
-                        className={h.centre_cost ? "cell-editable" : "cell-empty cell-editable"}
-                        value={h.centre_cost || ''}
-                        onChange={e => {
-                          const newSpaces = [...ifcSpaces];
-                          newSpaces[originalIdx] = { ...newSpaces[originalIdx], centre_cost: e.target.value };
-                          setIfcSpaces(newSpaces);
-                        }}
-                      />
-                    </td>
-                    <td className="c-guid cell-noneditable">{h.guid || ''}</td>
-                    <td className="c-area cell-noneditable">{h.area || ''}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <h3>Resumen de elementos importados</h3>
+          
+          {ifcSpaces.length > 0 && (
+            <div style={{ 
+              backgroundColor: '#f8f9fa', 
+              border: '1px solid #dee2e6', 
+              borderRadius: '8px', 
+              padding: '20px', 
+              marginBottom: '20px' 
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                marginBottom: '15px'
+              }}>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#495057' }}>
+                  📋 IFCSPACE - {ifcSpaces.length} elementos
+                </div>
+                <button
+                  onClick={() => setTablePopupOpen(true)}
+                  style={{
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  Ver detalles
+                </button>
+              </div>
+              <div style={{ fontSize: '14px', color: '#6c757d' }}>
+                Habitaciones extraídas del archivo FRAG
+              </div>
+            </div>
+          )}
+          
+          {ifcDoors.length > 0 && (
+            <div style={{ 
+              backgroundColor: '#f8f9fa', 
+              border: '1px solid #dee2e6', 
+              borderRadius: '8px', 
+              padding: '20px', 
+              marginBottom: '20px' 
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                marginBottom: '15px'
+              }}>
+                <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#495057' }}>
+                  🚪 IFCDOOR - {ifcDoors.length} elementos
+                </div>
+                <button
+                  onClick={() => setActiusPopupOpen(true)}
+                  style={{
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  Ver detalles
+                </button>
+              </div>
+              <div style={{ fontSize: '14px', color: '#6c757d' }}>
+                Puertas extraídas del archivo FRAG
+              </div>
+            </div>
+          )}
+          
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {ifcSpaces.length > 0 && (
+              <button
+                onClick={handleUpdateDatabase}
+                style={{
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Actualizar tabla habitacions
+              </button>
+            )}
+            {ifcDoors.length > 0 && (
+              <button
+                onClick={handleUpdateActius}
+                style={{
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  padding: '12px 24px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Actualizar tabla actius
+              </button>
+            )}
+          </div>
         </>
+      )}
+      
+      {tablePopupOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '20px',
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            position: 'relative'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '20px',
+              borderBottom: '1px solid #dee2e6',
+              paddingBottom: '10px'
+            }}>
+              <h3 style={{ margin: 0 }}>Habitaciones importadas ({ifcSpaces.length})</h3>
+              <button
+                onClick={() => setTablePopupOpen(false)}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f5f5f5' }}>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Codi</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Edifici</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Planta</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Departament</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>ID</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Centre Cost</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>GUID</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Area</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ifcSpaces.map((space: HabitacionIFC, index: number) => (
+                    <tr key={index}>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.codi}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.edifici}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.planta}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.departament}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.id}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.centre_cost}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px', fontSize: '10px' }}>{space.guid}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{space.area}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal popup para tabla de actius */}
+      {actiusPopupOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '20px',
+            maxWidth: '95vw',
+            maxHeight: '90vh',
+            overflow: 'auto',
+            position: 'relative'
+          }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: '20px',
+              borderBottom: '1px solid #dee2e6',
+              paddingBottom: '10px'
+            }}>
+              <h3 style={{ margin: 0 }}>Puertas importadas ({ifcDoors.length})</h3>
+              <button
+                onClick={() => setActiusPopupOpen(false)}
+                style={{
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 12px',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f5f5f5' }}>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>GUID</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Tipus</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Subtipus</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Edifici</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Planta</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Zona</th>
+                    <th style={{ border: '1px solid #ddd', padding: '8px' }}>Ubicacio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ifcDoors.map((door: ActiuIFC, index: number) => (
+                    <tr key={index}>
+                      <td style={{ border: '1px solid #ddd', padding: '4px', fontSize: '10px' }}>{door.guid}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{door.tipus}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{door.subtipus}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{door.edifici}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{door.planta}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{door.zona}</td>
+                      <td style={{ border: '1px solid #ddd', padding: '4px' }}>{door.ubicacio}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
