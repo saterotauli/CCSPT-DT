@@ -5,7 +5,7 @@ import * as OBC from "@thatopen/components";
 import * as OBF from "@thatopen/components-front";
 import { setupHighlight } from "./ModelInformation";
 // import FloorSelector from "./FloorSelector";
-import ClassifierExample from './ClassifierExample';
+
 
 interface ModelLoaderProps {
   buildingFile: string; // Nombre del archivo de fragmentos a cargar
@@ -22,9 +22,9 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
   // Estado para saber si la inicialización ha terminado
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Efecto principal: inicializa el visor y carga los modelos al montar/cambiar buildingFile
+  // Efecto principal: inicializa el fm y carga los modelos al montar/cambiar buildingFile
   useEffect(() => {
-    // Obtiene el contenedor del visor
+    // Obtiene el contenedor del fm
     const container = document.getElementById("viewer-container");
     if (!container) {
       console.error("No se encontró el contenedor 'viewer-container'");
@@ -53,7 +53,7 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
 
         worldInstance.scene = new OBC.SimpleScene(componentsInstance);
         worldInstance.scene.setup();
-        worldInstance.scene.three.background = null;
+        worldInstance.scene.three.background = new THREE.Color(0x000000); // Fondo negro
 
         // Configura el renderer y la cámara
         worldInstance.renderer = new OBF.PostproductionRenderer(componentsInstance, container);
@@ -61,7 +61,7 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
 
         componentsInstance.init();
 
-        // Ajuste responsivo del visor al tamaño del contenedor
+        // Ajuste responsivo del fm al tamaño del contenedor
         const updateRendererAndCamera = () => {
           if (worldInstance && worldInstance.renderer && worldInstance.camera && container) {
             worldInstance.renderer.resize();
@@ -197,11 +197,6 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
   return (
     <>
       {/* Aquí se pueden añadir otros componentes como el panel de información o el selector de plantas */}
-      {isInitialized && components && (
-        <ClassifierExample 
-          components={components}
-        />
-      )}
     </>
   );
 };

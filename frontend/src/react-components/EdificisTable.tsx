@@ -67,7 +67,25 @@ const IfcBuildingsTable: React.FC = () => {
   if (loading) return <p>Cargando IfcBuildings...</p>;
 
   return (
-    <div>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header d'Edificis */}
+      <header style={{
+        background: '#007EB0',
+        color: '#fff',
+        padding: '12px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #005a7e'
+      }}>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500 }}>Gestió d'Edificis</h1>
+        <div style={{ fontSize: '14px', opacity: 0.9 }}>
+          Administració de models IFC
+        </div>
+      </header>
+      
+      <div style={{ flex: 1, padding: 32, background: '#f8f9fa', overflow: 'auto' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px #0001', padding: 32 }}>
       {/* Alta */}
       <form onSubmit={handleAdd} style={{ marginBottom: 20 }}>
         <input
@@ -139,6 +157,8 @@ const IfcBuildingsTable: React.FC = () => {
           ))}
         </tbody>
       </table>
+        </div>
+      </div>
     </div>
   );
 };

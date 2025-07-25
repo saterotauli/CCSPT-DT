@@ -10,6 +10,7 @@ interface ClassificationGroup {
 // https://github.com/ThatOpen/engine_components/blob/main/packages/core/src/fragments/Classifier/example.ts
 const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ components }) => {
   const [selectedGroup, setSelectedGroup] = useState<ClassificationGroup | null>(null);
+  const [isCollapsed, setIsCollapsed] = React.useState<boolean>(false);
   const [classifications, setClassifications] = useState<Map<string, Map<string, any>>>(new Map());
   const [isReady, setIsReady] = useState(false);
   
@@ -225,28 +226,48 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
   return (
     <div className="bim-panel" style={{ 
       position: 'absolute', 
-      top: '80px',
-      left: '340px', 
+      top: '10px',
+      left: '10px',
       backgroundColor: 'white', 
       borderRadius: '8px',
-      padding: '15px',
+      padding: isCollapsed ? '10px' : '15px',
       boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
       maxHeight: '80vh',
       overflowY: 'auto',
       zIndex: 1000,
-      width: '250px'
+      width: isCollapsed ? '40px' : '180px',
+      transition: 'all 0.3s ease'
     }}>
       <div style={{ 
-        borderBottom: '1px solid #eee', 
-        paddingBottom: '10px',
-        marginBottom: '10px',
+        borderBottom: isCollapsed ? 'none' : '1px solid #eee', 
+        paddingBottom: isCollapsed ? '0' : '10px',
+        marginBottom: isCollapsed ? '0' : '10px',
         fontWeight: 'bold',
-        fontSize: '16px'
+        fontSize: '16px',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
       }}>
-        Classifier Tutorial
+        {!isCollapsed && <span>Nivells</span>}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '14px',
+            cursor: 'pointer',
+            padding: '2px',
+            color: '#666'
+          }}
+          title={isCollapsed ? 'Expandir' : 'Colapsar'}
+        >
+          {isCollapsed ? '📋' : '←'}
+        </button>
       </div>
       
-      {/* Panel Section: General */}
+      {!isCollapsed && (
+        <>
+          {/* Panel Section: General */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ 
           fontSize: '14px', 
@@ -269,7 +290,7 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
             fontSize: '14px'
           }}
         >
-          Reset Visibility
+          Tot 
         </button>
       </div>
       
@@ -316,6 +337,8 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
           })}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

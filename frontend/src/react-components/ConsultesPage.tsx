@@ -1,14 +1,8 @@
-// Declaración global para compatibilidad con Web Speech API en TypeScript
-// Evita error: Cannot find name 'SpeechRecognitionEvent'
-declare global {
-  interface SpeechRecognitionEvent extends Event {
-    results: SpeechRecognitionResultList;
-  }
-}
-
 import React, { useState } from 'react';
+import { highlightByGuids } from './visor/ModelInformation';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
+import DownloadIcon from '@mui/icons-material/Download';
 
 const ConsultesPage: React.FC = () => {
   const [pregunta, setPregunta] = useState('');
@@ -16,35 +10,28 @@ const ConsultesPage: React.FC = () => {
   const [sql, setSql] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [scope, setScope] = useState<'todos' | 'solo-actual'>('todos');
+  const [edificioActivo, setEdificioActivo] = useState<string>('');
 
-  // Función para manejar el clic en la cabecera
-  const handleSort = (col: string) => {
-    if (sortColumn === col) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(col);
-      setSortDirection('asc');
-    }
+  // Lista de edificios disponibles
+  const buildings = [
+    { label: "RAC Advanced", value: "RAC" },
+    { label: "That OPEN", value: "TOC" },
+    { label: "Albada", value: "ALB" },
+    { label: "CQA", value: "CQA" },
+    { label: "Mínimo", value: "MIN" },
+    { label: "UDIAT", value: "UDI" },
+  ];
+
+  const handleDownloadExcel = () => {
+    if (!resultados.length) return;
+    const worksheet = XLSX.utils.json_to_sheet(resultados);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultats');
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    saveAs(blob, 'resultats_consulta.xlsx');
   };
-
-  // Ordenar los resultados según la columna y dirección
-  const sortedResultados = React.useMemo(() => {
-    if (!sortColumn) return resultados;
-    return [...resultados].sort((a, b) => {
-      const aValue = a[sortColumn];
-      const bValue = b[sortColumn];
-      // Orden numérico si ambos son números
-      if (!isNaN(Number(aValue)) && !isNaN(Number(bValue))) {
-        return sortDirection === 'asc' ? Number(aValue) - Number(bValue) : Number(bValue) - Number(aValue);
-      }
-      // Orden alfabético
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [resultados, sortColumn, sortDirection]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,15 +40,33 @@ const ConsultesPage: React.FC = () => {
     setResultados([]);
     setSql('');
     try {
+      const body: { pregunta: string; edificio?: string } = { pregunta };
+      if (scope === 'solo-actual' && edificioActivo) {
+        body.edificio = edificioActivo;
+      }
+
       const response = await fetch('/api/consultes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pregunta })
+        body: JSON.stringify(body)
       });
       const data = await response.json();
+      console.log('[ConsultesPage] Respuesta backend:', data);
       if (!response.ok) throw new Error(data.error || 'Error en la consulta');
       setSql(data.sql);
       setResultados(Array.isArray(data.result) ? data.result : []);
+      
+      // --- Highlight automático por GUID ---
+      const guids = (Array.isArray(data.result) ? data.result : [])
+        .map((row: any) => row.guid || row.GlobalId || row.globalid)
+        .filter((g: any) => typeof g === 'string' && g.length > 0);
+      console.log('[ConsultesPage] GUIDs extraídos:', guids);
+      if (guids.length > 0) {
+        console.log('[ConsultesPage] Llamando a highlightByGuids...');
+        highlightByGuids(guids);
+      } else {
+        console.log('[ConsultesPage] No hay GUIDs para resaltar');
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -69,131 +74,152 @@ const ConsultesPage: React.FC = () => {
     }
   };
 
-  // Función para descargar Excel
-  const handleDownloadExcel = () => {
-    if (!sortedResultados.length) return;
-    const worksheet = XLSX.utils.json_to_sheet(sortedResultados);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultats');
-    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([excelBuffer], { type: 'application/octet-stream' });
-    saveAs(blob, 'resultats.xlsx');
-  };
+  // Filtrado según el radio seleccionado
+  const resultadosFiltrados = scope === 'solo-actual' && edificioActivo
+    ? resultados.filter(r => r.ubicacio && r.ubicacio.substring(0, 3) === edificioActivo)
+    : resultados;
 
   return (
-    <div style={{ maxWidth: 700, margin: '32px auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px #0001', padding: 32 }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header de Consultes */}
+      <header style={{
+        background: '#007EB0',
+        color: '#fff',
+        padding: '12px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderBottom: '1px solid #005a7e'
+      }}>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500 }}>Consultes IA</h1>
+        <div style={{ fontSize: '14px', opacity: 0.9 }}>
+          Consultes en llenguatge natural
+        </div>
+      </header>
+      
+      <div style={{ flex: 1, padding: 32, background: '#f8f9fa', overflow: 'auto' }}>
+        <div style={{ maxWidth: 1000, margin: '0 auto', background: '#fff', borderRadius: 8, boxShadow: '0 2px 12px #0001', padding: 32 }}>
       <h2 style={{ marginBottom: 24 }}>Consultes en llenguatge natural</h2>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-        <input
-          type="text"
-          placeholder="Ex: Dame todas las puertas cortafuegos del edificio A"
-          value={pregunta}
-          onChange={e => setPregunta(e.target.value)}
-          style={{ flex: 1, padding: 10, fontSize: 16, borderRadius: 4, border: '1px solid #ccc' }}
-          required
-        />
+      
+      <div style={{ marginBottom: 20, display: 'flex', gap: 24, alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
+          <input
+            type="radio"
+            value="todos"
+            checked={scope === 'todos'}
+            onChange={() => setScope('todos')}
+          />
+          Tots els edificis
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 500 }}>
+          <input
+            type="radio"
+            value="solo-actual"
+            checked={scope === 'solo-actual'}
+            onChange={() => setScope('solo-actual')}
+          />
+          Només edifici específic
+        </label>
+        {scope === 'solo-actual' && (
+          <select
+            value={edificioActivo}
+            onChange={(e) => setEdificioActivo(e.target.value)}
+            style={{ padding: '6px 12px', borderRadius: 4, border: '1px solid #ccc', fontSize: 14 }}
+          >
+            <option value="">Selecciona edifici</option>
+            {buildings.map(building => (
+              <option key={building.value} value={building.value}>
+                {building.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {scope === 'solo-actual' && !edificioActivo && (
+          <span style={{ color: '#a00', fontSize: 13, marginLeft: 8 }}>Selecciona un edifici</span>
+        )}
+      </div>
+      
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flex: 1, gap: 8 }}>
+          <input
+            type="text"
+            placeholder="Pregunta sobre el modelo..."
+            value={pregunta}
+            onChange={e => setPregunta(e.target.value)}
+            style={{ flex: 1, padding: 12, fontSize: 16, borderRadius: 4, border: '1px solid #ccc' }}
+            required
+          />
+          <button type="submit" disabled={loading} style={{ padding: '12px 20px', fontSize: 16, borderRadius: 4, background: '#007EB0', color: '#fff', border: 'none', cursor: 'pointer' }}>
+            {loading ? 'Consultando...' : 'Consulta'}
+          </button>
+        </form>
         <button
           type="button"
-          aria-label="Hablar"
-          style={{ padding: '10px', fontSize: 20, borderRadius: 4, background: '#fff', color: '#1976d2', border: '1px solid #1976d2', cursor: 'pointer' }}
-          onClick={() => {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-            if (!SpeechRecognition) {
-              alert('Tu navegador no soporta reconocimiento de voz.');
-              return;
-            }
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'ca-ES';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-            function normalizaEdificios(text: string): string {
-              return text
-                .replace(/\bce cu a\b/gi, 'CQA')
-                .replace(/\bc q a\b/gi, 'CQA')
-                .replace(/\bcua\b/gi, 'CQA')
-                .replace(/\bcèqua\b/gi, 'CQA');
-            }
-            recognition.onresult = (event: SpeechRecognitionEvent) => {
-              if (event.results && event.results[0] && event.results[0][0]) {
-                let voiceText = event.results[0][0].transcript;
-                voiceText = normalizaEdificios(voiceText);
-                setPregunta(voiceText);
-              }
-            };
-
-            recognition.onerror = (event: any) => {
-              alert('Error en el reconocimiento de voz: ' + event.error);
-            };
-            recognition.start();
+          onClick={handleDownloadExcel}
+          disabled={resultadosFiltrados.length === 0}
+          title="Descargar Excel"
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: resultados.length > 0 ? 'pointer' : 'not-allowed',
+            padding: 8,
+            opacity: resultados.length > 0 ? 1 : 0.4,
+            display: 'flex',
+            alignItems: 'center',
           }}
-        >🎤</button>
-        <button type="submit" disabled={loading} style={{ padding: '10px 20px', fontSize: 16, borderRadius: 4, background: '#1976d2', color: '#fff', border: 'none', cursor: 'pointer' }}>
-          {loading ? 'Consultant...' : 'Consultar'}
+        >
+          <DownloadIcon style={{ color: '#007EB0', fontSize: 28 }} />
         </button>
-      </form>
+      </div>
+      
       {error && <div style={{ color: 'red', marginBottom: 16 }}>{error}</div>}
+      
       {sql && (
         <div style={{ marginBottom: 16, fontSize: 13, color: '#555', background: '#f3f3f3', padding: 8, borderRadius: 4 }}>
-          <b>SQL generat:</b> <code>{sql}</code>
+          <b>SQL generado:</b> <code>{sql}</code>
         </div>
       )}
-      {sortedResultados.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <button
-            onClick={handleDownloadExcel}
-            style={{ marginBottom: 10, padding: '8px 18px', borderRadius: 4, background: '#1976d2', color: '#fff', border: 'none', cursor: 'pointer', float: 'right' }}
-          >
-            Descargar Excel
-          </button>
-          <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 8 }}>
-            <thead>
-              <tr>
-                {Object.keys(sortedResultados[0])
-                  .filter((col) => col.toLowerCase() !== 'guid')
-                  .map((col) => (
-                    <th
-                      key={col}
-                      style={{ borderBottom: '2px solid #1976d2', padding: 8, textAlign: 'left', background: '#e3eefd', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => handleSort(col)}
-                    >
-                      {col}
-                      {sortColumn === col && (
-                        <span style={{ marginLeft: 6, fontSize: 12 }}>
-                          {sortDirection === 'asc' ? '▲' : '▼'}
-                        </span>
-                      )}
-                    </th>
-                  ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sortedResultados.map((row, i) => (
-                <tr key={i}>
-                  {Object.entries(row)
-                    .filter(([key]) => key.toLowerCase() !== 'guid')
-                    .map(([key, val], j) => (
-                      <td
-  key={j}
-  style={{
-    borderBottom: '1px solid #eee',
-    padding: 8,
-    background: val == null ? '#ffcccc' : undefined,
-    color: val == null ? '#a00' : undefined,
-    fontWeight: val == null ? 'bold' : undefined
-  }}
->
-  {val == null ? 'null' : String(val)}
-</td>
+      
+      {resultados.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <h4 style={{ marginBottom: 12 }}>Resultados ({resultadosFiltrados.length})</h4>
+          <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+              <thead>
+                <tr>
+                  {Object.keys(resultados[0])
+                    .filter((col) => col.toLowerCase() !== 'guid')
+                    .map((col) => (
+                      <th key={col} style={{ borderBottom: '2px solid #007EB0', padding: 8, textAlign: 'left', background: '#e3eefd' }}>{col}</th>
                     ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {resultadosFiltrados.map((row, i) => (
+                  <tr key={i}>
+                    {Object.entries(row)
+                      .filter(([key]) => key.toLowerCase() !== 'guid')
+                      .map(([key, val], j) => (
+                        <td
+                          key={j}
+                          style={{ borderBottom: '1px solid #eee', padding: 8, background: val == null ? '#ffcccc' : undefined, color: val == null ? '#a00' : undefined, fontWeight: val == null ? 'bold' : undefined }}
+                        >
+                          {val == null ? 'null' : String(val)}
+                        </td>
+                      ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+      
       {sql && resultados.length === 0 && !loading && !error && (
         <div style={{ color: '#888', marginTop: 16 }}>Sense resultats.</div>
       )}
+        </div>
+      </div>
     </div>
   );
 };

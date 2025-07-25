@@ -359,7 +359,7 @@ const DisciplineFilter: React.FC<DisciplineFilterProps> = ({
                   // Solo incluir si realmente tiene Subproyecto con HVAC
                   if (hasHvacSubproyecto) {
                     verifiedHvacFragments.add(fragmentId);
-                    console.log(`✅ Fragment ${fragmentId} verificado como HVAC: ${subproyectoValue}`);
+                    //console.log(`✅ Fragment ${fragmentId} verificado como HVAC: ${subproyectoValue}`);
                   }
                   
                 } catch (error) {

@@ -18,8 +18,8 @@ html, body {
   flex: 1 1 0; /* Ocupa todo el espacio restante verticalmente */
   overflow-y: auto; /* Permite scroll si el contenido de la página es más largo */
   overflow-x: hidden;
-  display: flex; /* Para que VisorPage (que es flex item) se estire */
-  flex-direction: column; /* Para que VisorPage (que es flex item) se estire */
+  display: flex; /* Para que FMPage (que es flex item) se estire */
+  flex-direction: column; /* Para que FMPage (que es flex item) se estire */
 }
 
 

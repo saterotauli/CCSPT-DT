@@ -1,0 +1,356 @@
+/* FMPage - Estilos principales */
+
+.fm-container {
+  display: flex;
+  height: 100vh;
+  font-family: Arial, sans-serif;
+}
+
+/* Columna izquierda */
+.fm-left-column {  
+  width: 20%;
+  min-width: 200px;
+  border-right: 1px solid #e0e0e0;
+  background: #f7f7f7;
+  padding: 1rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.fm-left-column h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+/* Dropdowns */
+.fm-dropdown-container {
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.fm-dropdown-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+  color: #555;
+}
+
+.fm-dropdown-button {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.fm-dropdown-button:hover {
+  border-color: #007acc;
+}
+
+.fm-dropdown-button.open {
+  border-color: #007acc;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.fm-dropdown-arrow {
+  transition: transform 0.2s;
+}
+
+.fm-dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+
+.fm-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #007acc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.fm-dropdown-item {
+  padding: 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fm-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.fm-dropdown-item:hover {
+  background-color: #f5f5f5;
+}
+
+.fm-dropdown-item.selected {
+  background-color: #e3f2fd;
+}
+
+.fm-discipline-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+/* Búsqueda de departamentos */
+.fm-search-container {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  position: relative;
+}
+
+.fm-search-scope {
+  margin-bottom: 8px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.fm-search-scope label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+}
+
+.fm-search-scope input[type="radio"] {
+  margin: 0;
+}
+
+.fm-search-dropdown-button {
+  width: 95%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid #000;
+  border-radius: 4px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+/* Central column */
+.fm-central-column {
+  width: 60%;
+  padding: 0.5rem;
+  box-sizing: border-box;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  position: relative; /* Para que los elementos absolute se posicionen relativamente a esta columna */
+}
+
+/* 3D container */
+.fm-3d-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 30%;
+}
+
+/* Viewer container */
+.fm-viewer-container {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+/* Resizer */
+.fm-resizer {
+  height: 8px;
+  background: #e0e0e0;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  user-select: none;
+}
+
+.fm-resizer.resizing {
+  background: #007acc;
+}
+
+.fm-resizer-handle {
+  width: 40px;
+  height: 3px;
+  background: #999;
+  border-radius: 2px;
+}
+
+/* Consulta IA container */
+.fm-consulta-container {
+  min-height: 20%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Right column */
+.fm-right-column {
+  width: 20%;
+  min-width: 300px;
+  border-left: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  box-sizing: border-box;
+}
+
+/* Dropdown menu */
+.fm-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Dropdown option */
+.fm-dropdown-option {
+  padding: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.fm-dropdown-option:last-child {
+  border-bottom: none;
+}
+
+.fm-dropdown-option-empty {
+  color: #999;
+}
+
+.fm-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.fm-search-result-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  background-color: transparent;
+  transition: background-color 0.2s;
+}
+
+.fm-search-result-item:last-child {
+  border-bottom: none;
+}
+
+.fm-search-result-item:hover {
+  background-color: #f5f5f5;
+}
+
+.fm-search-result-item.selected {
+  background-color: #f0f8ff;
+}
+
+.fm-view-button {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.fm-view-button:hover {
+  background: #218838;
+}
+
+.fm-view-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+/* Columna central */
+.fm-central-column {
+  width: 60%;
+  padding: 0.5rem;
+  box-sizing: border-box;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+}
+
+.fm-viewer-container {
+  width: 100%;
+  height: 100%;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+/* Resizer */
+.fm-resizer {
+  height: 8px;
+  background: #e0e0e0;
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.fm-resizer:hover,
+.fm-resizer.resizing {
+  background: #007acc;
+}
+
+.fm-resizer-handle {
+  width: 40px;
+  height: 3px;
+  background: #999;
+  border-radius: 2px;
+}
+
+/* Columna derecha */
+.fm-right-column {
+  width: 20%;
+  min-width: 300px;
+  border-left: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  box-sizing: border-box;
+}
