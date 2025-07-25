@@ -3,7 +3,6 @@ import ModelLoader from "./ModelLoader";
 import ConsultaBox from "./ConsultaBox";
 import ElementInfoPanel from "./ElementInfoPanel";
 import DisciplineFilter from "./DisciplineFilter";
-import DropdownSelector from "./components/DropdownSelector";
 import ClassifierExample from "./ClassifierExample";
 import ApartmentIcon from '@mui/icons-material/Apartment';
 import * as OBC from "@thatopen/components";
