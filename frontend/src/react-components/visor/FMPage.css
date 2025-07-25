@@ -68,21 +68,6 @@
   transform: rotate(180deg);
 }
 
-.fm-dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: white;
-  border: 1px solid #007acc;
-  border-top: none;
-  border-radius: 0 0 4px 4px;
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
 .fm-dropdown-item {
   padding: 0.75rem;
   cursor: pointer;
@@ -227,7 +212,7 @@
   border-top: none;
   border-radius: 0 0 4px 4px;
   z-index: 1000;
-  max-height: 200px;
+  max-height: 800px;
   overflow-y: auto;
 }
 

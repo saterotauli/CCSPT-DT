@@ -20,11 +20,11 @@ const ConfigHeader: React.FC = () => {
       <nav style={{ display: 'flex', gap: '24px', overflow: 'hidden', flexWrap: 'nowrap' }}>
         <button
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 500, color: '#fff', padding: '8px 12px', borderRadius: 4, transition: 'background 0.2s' }}
-          onClick={() => navigate('/fm')}
+          onClick={() => navigate('/visor')}
           onMouseOver={e => (e.currentTarget.style.background = '#0288d1')}
           onMouseOut={e => (e.currentTarget.style.background = 'none')}
         >
-          fm
+          Visor
         </button>
         <button
           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 500, color: '#fff', padding: '8px 12px', borderRadius: 4, transition: 'background 0.2s' }}

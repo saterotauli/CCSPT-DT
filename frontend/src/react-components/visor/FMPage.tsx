@@ -5,6 +5,7 @@ import ElementInfoPanel from "./ElementInfoPanel";
 import DisciplineFilter from "./DisciplineFilter";
 import DropdownSelector from "./components/DropdownSelector";
 import ClassifierExample from "./ClassifierExample";
+import ApartmentIcon from '@mui/icons-material/Apartment';
 import * as OBC from "@thatopen/components";
 import * as THREE from "three";
 import * as FRAGS from "@thatopen/fragments";
@@ -41,8 +42,10 @@ const FMPage: React.FC = () => {
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = React.useState<boolean>(false);
   const [selectedBuilding, setSelectedBuilding] = React.useState<string>("");
   const [selectedDiscipline, setSelectedDiscipline] = React.useState<string>("");
-  const [isBuildingDropdownOpen, setIsBuildingDropdownOpen] = React.useState<boolean>(false);
   const [isDisciplineDropdownOpen, setIsDisciplineDropdownOpen] = React.useState<boolean>(false);
+  const [isHeaderBuildingDropdownOpen, setIsHeaderBuildingDropdownOpen] = React.useState<boolean>(false);
+  const [buildingFilterText, setBuildingFilterText] = React.useState<string>("");
+  const [disciplineFilterText, setDisciplineFilterText] = React.useState<string>("");
   const [consultaHeight, setConsultaHeight] = React.useState<number>(30); // Porcentaje de altura para Consulta IA
   const [isResizing, setIsResizing] = React.useState<boolean>(false);
   
@@ -52,16 +55,30 @@ const FMPage: React.FC = () => {
 
   // Encontrar el archivo del edificio seleccionado
   const selectedBuildingFile = buildings.find(b => b.value === selectedBuilding)?.file || "";
+  
+  // Filtrar edificios según el texto de búsqueda
+  const filteredBuildings = buildings.filter(building => 
+    building.label.toLowerCase().includes(buildingFilterText.toLowerCase()) ||
+    building.value.toLowerCase().includes(buildingFilterText.toLowerCase())
+  );
+  
+  // Filtrar disciplinas según el texto de búsqueda
+  const filteredDisciplines = DISCIPLINES.filter(discipline => 
+    discipline.name.toLowerCase().includes(disciplineFilterText.toLowerCase()) ||
+    discipline.code.toLowerCase().includes(disciplineFilterText.toLowerCase())
+  );
 
   // Cerrar dropdowns y lista de búsqueda al hacer clic fuera
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
-      if (!target.closest('[data-building-dropdown]')) {
-        setIsBuildingDropdownOpen(false);
-      }
       if (!target.closest('[data-discipline-dropdown]')) {
         setIsDisciplineDropdownOpen(false);
+        setDisciplineFilterText(""); // Limpiar filtro al cerrar
+      }
+      if (!target.closest('[data-header-building-dropdown]')) {
+        setIsHeaderBuildingDropdownOpen(false);
+        setBuildingFilterText(""); // Limpiar filtro al cerrar
       }
       if (!target.closest('[data-search-dept]')) {
         setSearchResults([]);
@@ -69,11 +86,11 @@ const FMPage: React.FC = () => {
       }
     };
 
-    if (isBuildingDropdownOpen || isDisciplineDropdownOpen || isSearchDropdownOpen) {
+    if (isDisciplineDropdownOpen || isHeaderBuildingDropdownOpen || isSearchDropdownOpen) {
       document.addEventListener('click', handleClickOutside);
       return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [isBuildingDropdownOpen, isDisciplineDropdownOpen, searchResults.length]);
+  }, [isDisciplineDropdownOpen, isHeaderBuildingDropdownOpen, searchResults.length]);
 
   // Callback para recibir los componentes desde ModelLoader
   const handleComponentsReady = React.useCallback((comps: OBC.Components | null, initialized: boolean) => {
@@ -656,98 +673,309 @@ const FMPage: React.FC = () => {
       <header style={{
         background: '#007EB0',
         color: '#fff',
-        padding: '12px 24px',
+        padding: '6px 10px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        borderBottom: '1px solid #005a7e'
+        borderBottom: '1px solid #005a7e',
+        minHeight: 54
       }}>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500 }}>Visor FM</h1>
-        <div style={{ fontSize: '14px', opacity: 0.9 }}>
-          Visualitzador de models 3D
+        {/* Columna izquierda (puede ir logo o vacía) */}
+        <div style={{ width: 60, minWidth: 40 }}></div>
+        {/* Centro: Selector de edificio */}
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+          <div data-header-building-dropdown style={{ position: 'relative' }}>
+          <div
+            onClick={() => setIsHeaderBuildingDropdownOpen(!isHeaderBuildingDropdownOpen)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              transition: 'all 0.2s ease',
+              minWidth: 180,
+              justifyContent: 'center'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+            }}
+          >
+            <ApartmentIcon style={{ fontSize: '30px' }} />
+            <span style={{ fontSize: '20px' }}>
+              {selectedBuilding ? 
+                buildings.find(b => b.value === selectedBuilding)?.label || 'Selecciona edifici' 
+                : 'Selecciona edifici'
+              }
+            </span>
+            <span style={{ fontSize: '12px', marginLeft: '4px' }}>▼</span>
+          </div>
+          
+          {/* Dropdown del selector de edificio */}
+          {isHeaderBuildingDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginTop: '4px',
+              backgroundColor: '#fff',
+              color: '#333',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              zIndex: 1000,
+              width: '280px',
+              maxHeight: '350px'
+            }}>
+              {/* Input de búsqueda */}
+              <div style={{ padding: '8px', borderBottom: '1px solid #eee' }}>
+                <input
+                  type="text"
+                  value={buildingFilterText}
+                  onChange={(e) => setBuildingFilterText(e.target.value)}
+                  placeholder="Buscar edificii..."
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+              
+              {/* Lista de edificios filtrados */}
+              <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                {filteredBuildings.length > 0 ? (
+                  filteredBuildings.map((building) => (
+                    <div
+                      key={building.value}
+                      onClick={() => {
+                        setSelectedBuilding(building.value);
+                        setIsHeaderBuildingDropdownOpen(false);
+                        setBuildingFilterText(""); // Limpiar filtro al seleccionar
+                      }}
+                      style={{
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #eee',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: selectedBuilding === building.value ? '#f0f8ff' : 'transparent'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedBuilding !== building.value) {
+                          e.currentTarget.style.backgroundColor = '#f5f5f5';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedBuilding !== building.value) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      <span style={{ 
+                        fontWeight: 'bold', 
+                        color: '#007EB0',
+                        minWidth: '40px'
+                      }}>
+                        {building.value}
+                      </span>
+                      <span>{building.label}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{
+                    padding: '12px 16px',
+                    color: '#999',
+                    fontStyle: 'italic',
+                    textAlign: 'center'
+                  }}>
+                    No s'han trobat edificis
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          </div>
         </div>
+        {/* Columna derecha (futuro: usuario, ayuda, etc.) */}
+        <div style={{ width: 60, minWidth: 40 }}></div>
+        
       </header>
       
       <div className="fm-container" style={{ flex: 1 }}>
       {/* Columna izquierda: selección */}
       <div className="fm-left-column">
         
-        {/* Selector de edificio personalizado */}
-        <DropdownSelector
-          options={buildings.map(b => ({ value: b.value, label: b.label, code: b.value }))}
-          value={selectedBuilding}
-          onChange={setSelectedBuilding}
-          isOpen={isBuildingDropdownOpen}
-          onToggle={() => setIsBuildingDropdownOpen(!isBuildingDropdownOpen)}
-          placeholder="Tria edifici..."
-          dataAttribute="data-building-dropdown"
-          renderSelected={(option) => {
-            if (option) {
-              return (
-                <>
-                  <span style={{ 
-                    fontWeight: 'bold', 
-                    color: '#007acc',
-                    minWidth: '40px'
-                  }}>
-                    {option.code}
-                  </span>
-                  <span>{option.label}</span>
-                </>
-              );
-            }
-            return null;
-          }}
-          renderOption={(option) => (
-            <>
+        {/* Nombre del edificio seleccionado */}
+        {selectedBuilding && (
+          <div style={{
+            padding: '12px 16px',
+            marginBottom: '1rem',
+            backgroundColor: '#f8f9fa',
+            border: '1px solid #e9ecef',
+            borderRadius: '6px',
+            borderLeft: '4px solid #007EB0'
+          }}>
+            
+            <div style={{
+              fontSize: '16px',
+              fontWeight: '600',
+              color: '#333',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
               <span style={{ 
                 fontWeight: 'bold', 
-                color: '#007acc',
-                minWidth: '40px'
+                color: '#007EB0',
+                minWidth: '40px',
+                fontSize: '14px'
               }}>
-                {option.code}
+                {selectedBuilding}
               </span>
-              <span>{option.label}</span>
-            </>
-          )}
-        />
+              <span>
+                {buildings.find(b => b.value === selectedBuilding)?.label}
+              </span>
+            </div>
+          </div>
+        )}
 
-        {/* Selector de disciplina personalizado */}
-        <div style={{ marginTop: '1rem' }}>
-          <DropdownSelector
-            options={DISCIPLINES.map(d => ({ value: d.code, label: d.name, icon: d.icon }))}
-            value={selectedDiscipline}
-            onChange={setSelectedDiscipline}
-            isOpen={isDisciplineDropdownOpen}
-            onToggle={() => setIsDisciplineDropdownOpen(!isDisciplineDropdownOpen)}
-            placeholder="Tria disciplina..."
-            dataAttribute="data-discipline-dropdown"
-            renderSelected={(option) => {
-              if (option) {
-                return (
-                  <>
-                    <img
-                      src={`/assets/${option.icon}`}
-                      alt={option.value}
-                      style={{ width: 30, height: 30, objectFit: 'contain' }}
-                    />
-                    <span>{option.label}</span>
-                  </>
-                );
-              }
-              return null;
+        {/* Selector de disciplina personalizado con filtrado */}
+        <div data-discipline-dropdown style={{ marginTop: '1rem', position: 'relative' }}>
+          <div
+            onClick={() => setIsDisciplineDropdownOpen(!isDisciplineDropdownOpen)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem',
+              border: '1px solid #007acc',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              backgroundColor: '#fff',
+              minHeight: '48px'
             }}
-            renderOption={(option) => (
-              <>
-                <img
-                  src={`/assets/${option.icon}`}
-                  alt={option.value}
-                  style={{ width: 20, height: 20, objectFit: 'contain' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+              {selectedDiscipline ? (
+                <>
+                  <img
+                    src={`/assets/${DISCIPLINES.find(d => d.code === selectedDiscipline)?.icon}`}
+                    alt={selectedDiscipline}
+                    style={{ width: 30, height: 30, objectFit: 'contain' }}
+                  />
+                  <span>{DISCIPLINES.find(d => d.code === selectedDiscipline)?.name}</span>
+                </>
+              ) : (
+                <span style={{ color: '#999' }}>Tria disciplina...</span>
+              )}
+            </div>
+            <span style={{ fontSize: '0.8rem', color: '#007acc' }}>▼</span>
+          </div>
+          
+          {/* Dropdown de disciplinas con filtrado */}
+          {isDisciplineDropdownOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              marginTop: '4px',
+              backgroundColor: '#fff',
+              color: '#333',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+              zIndex: 1000,
+              maxHeight: '350px'
+            }}>
+              {/* Input de búsqueda */}
+              <div style={{ padding: '8px', borderBottom: '1px solid #eee' }}>
+                <input
+                  type="text"
+                  value={disciplineFilterText}
+                  onChange={(e) => setDisciplineFilterText(e.target.value)}
+                  placeholder="Buscar disciplina..."
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
                 />
-                <span>{option.label}</span>
-              </>
-            )}
-          />
+              </div>
+              
+              {/* Lista de disciplinas filtradas */}
+              <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                {filteredDisciplines.length > 0 ? (
+                  filteredDisciplines.map((discipline) => (
+                    <div
+                      key={discipline.code}
+                      onClick={() => {
+                        setSelectedDiscipline(discipline.code);
+                        setIsDisciplineDropdownOpen(false);
+                        setDisciplineFilterText(""); // Limpiar filtro al seleccionar
+                      }}
+                      style={{
+                        padding: '12px 16px',
+                        cursor: 'pointer',
+                        borderBottom: '1px solid #eee',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        backgroundColor: selectedDiscipline === discipline.code ? '#f0f8ff' : 'transparent'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedDiscipline !== discipline.code) {
+                          e.currentTarget.style.backgroundColor = '#f5f5f5';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedDiscipline !== discipline.code) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
+                    >
+                      <img
+                        src={`/assets/${discipline.icon}`}
+                        alt={discipline.code}
+                        style={{ width: 20, height: 20, objectFit: 'contain' }}
+                      />
+                      <span>{discipline.name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{
+                    padding: '12px 16px',
+                    color: '#999',
+                    fontStyle: 'italic',
+                    textAlign: 'center'
+                  }}>
+                    No s'han trobat disciplines
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Buscador de espacios por departamento */}

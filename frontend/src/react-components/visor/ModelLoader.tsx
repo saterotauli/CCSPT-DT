@@ -22,9 +22,9 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
   // Estado para saber si la inicialización ha terminado
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Efecto principal: inicializa el fm y carga los modelos al montar/cambiar buildingFile
+  // Efecto principal: inicializa el visor y carga los modelos al montar/cambiar buildingFile
   useEffect(() => {
-    // Obtiene el contenedor del fm
+    // Obtiene el contenedor del visor
     const container = document.getElementById("viewer-container");
     if (!container) {
       console.error("No se encontró el contenedor 'viewer-container'");
@@ -61,7 +61,7 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
 
         componentsInstance.init();
 
-        // Ajuste responsivo del fm al tamaño del contenedor
+        // Ajuste responsivo del visor al tamaño del contenedor
         const updateRendererAndCamera = () => {
           if (worldInstance && worldInstance.renderer && worldInstance.camera && container) {
             worldInstance.renderer.resize();

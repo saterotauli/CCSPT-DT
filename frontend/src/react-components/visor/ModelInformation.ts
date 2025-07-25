@@ -1008,7 +1008,7 @@ export function createInformationPanel(model: any) {
               <bim-label style="white-space: normal;">💡 Abre la consola del navegador para ver los datos registrados.</bim-label>
             </bim-panel-section>
             <bim-panel-section label="Elemento Seleccionado">
-              <bim-label style=${BUI.styleMap({ whiteSpace: "normal", display: _localId ? "none" : "unset" })}>💡 Haz clic en cualquier elemento del fm para activar las opciones de datos.</bim-label>
+              <bim-label style=${BUI.styleMap({ whiteSpace: "normal", display: _localId ? "none" : "unset" })}>💡 Haz clic en cualquier elemento del visor para activar las opciones de datos.</bim-label>
               <bim-label ${BUI.ref(onNameLabelCreated)} style=${BUI.styleMap({ whiteSpace: "normal", display: !_localId ? "none" : "unset" })}></bim-label>
               <bim-button ?disabled=${!_localId} label="Ver Atributos" @click=${onLogAttributes}></bim-button>
               <div style="display: flex; gap: 0.5rem">
