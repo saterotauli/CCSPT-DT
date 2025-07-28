@@ -58,6 +58,11 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
         // Configura el renderer y la cámara
         worldInstance.renderer = new OBF.PostproductionRenderer(componentsInstance, container);
         worldInstance.camera = new OBC.OrthoPerspectiveCamera(componentsInstance);
+        
+        // Forzar cámara siempre en modo ortográfico
+        if (worldInstance.camera.projection) {
+          worldInstance.camera.projection.set('Orthographic');
+        }
 
         componentsInstance.init();
 
@@ -101,6 +106,31 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
           }
         });
 
+        // ✨ CALLBACK OFICIAL: Se ejecuta cada vez que se añade un modelo
+        let expectedModels = 1; // Por defecto, solo arquitectónico
+        let loadedModels = 0;
+        let setupHighlightCalled = false;
+        
+        fragmentsInstance.list.onItemSet.add(({ value: model }) => {
+          const modelId = (model as any).id || 'modelo-desconocido';
+          console.log('🎯 Modelo añadido a la lista:', modelId);
+          
+          // Añadir modelo a la escena
+          model.useCamera(worldInstance.camera.three);
+          worldInstance.scene.three.add(model.object);
+          fragmentsInstance.core.update(true);
+          
+          loadedModels++;
+          console.log(`📊 Modelos cargados: ${loadedModels}/${expectedModels}`);
+          
+          // Configurar Hoverer solo cuando todos los modelos esperados estén cargados
+          if (loadedModels >= expectedModels && !setupHighlightCalled) {
+            console.log('🔧 Todos los modelos cargados - configurando Hoverer...');
+            setupHighlight(container, worldInstance, fragmentsInstance);
+            setupHighlightCalled = true;
+          }
+        });
+
         // 5. Carga el modelo arquitectónico principal (AS.frag)
         if (!buildingFile) {
           console.log("Ningún edificio seleccionado, no se carga modelo.");
@@ -120,24 +150,23 @@ const ModelLoader: React.FC<ModelLoaderProps> = ({ buildingFile, onComponentsRea
           const mechanicalUrl = `/${mechanicalFile}`;
           const mechFile = await fetch(mechanicalUrl);
           if (mechFile.ok) {
+            expectedModels = 2; // Ahora esperamos 2 modelos
+            console.log('🔧 Modelo de instalaciones encontrado - esperando 2 modelos');
             const mechBuffer = await mechFile.arrayBuffer();
             await fragmentsInstance.core.load(mechBuffer, { modelId: mechanicalFile });
+          } else {
+            console.log('📝 Solo modelo arquitectónico - esperando 1 modelo');
           }
         } catch (error) {
           console.warn("Error al intentar cargar el modelo de instalaciones:", error);
+          console.log('📝 Solo modelo arquitectónico - esperando 1 modelo');
         }
 
-        // 7. Añade todos los modelos cargados a la escena y asocia la cámara
-        for (const [, model] of fragmentsInstance.list) {
-          worldInstance.scene.three.add(model.object);
-          model.useCamera(worldInstance.camera.three);
-        }
-
-        // 8. Actualiza los fragmentos en la escena
+        // 7. Los modelos se añaden automáticamente a la escena via callback onItemSet
+        // 8. El sistema de highlight se configura automáticamente cuando todos los modelos estén cargados
+        
+        // Actualizar fragmentos después de cargar todos los modelos
         fragmentsInstance.core.update(true);
-
-        // 9. Configura el sistema de selección y resaltado (highlight)
-        setupHighlight(container, worldInstance, fragmentsInstance);
 
         // 10. Calcula el bounding box de todos los modelos cargados
         const boxer = componentsInstance.get(OBC.BoundingBoxer);

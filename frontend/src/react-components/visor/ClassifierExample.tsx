@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import * as THREE from 'three';
 import * as OBC from '@thatopen/components';
+import * as OBF from '@thatopen/components-front';
+import { setupHighlight } from './ModelInformation';
 
 interface ClassificationGroup {
   classification: string;
@@ -12,6 +14,8 @@ interface ClassificationGroup {
 const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ components }) => {
   const [selectedGroup, setSelectedGroup] = useState<ClassificationGroup | null>(null);
   const [isCollapsed, setIsCollapsed] = React.useState<boolean>(false);
+  const [showCeilings, setShowCeilings] = React.useState<boolean>(false); // Techos ocultos por defecto
+  const [colorByType, setColorByType] = React.useState<boolean>(false); // Colorear por tipo desactivado por defecto
   const [classifications, setClassifications] = useState<Map<string, Map<string, any>>>(new Map());
   const [isReady, setIsReady] = useState(false);
   const [cameraMode, setCameraMode] = useState<'3D' | '2D'>('3D'); // Por defecto 3D
@@ -27,6 +31,18 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
   const fragmentsRef = useRef<OBC.FragmentsManager | null>(null);
   const hiderRef = useRef<OBC.Hider | null>(null);
   const setupDoneRef = useRef(false);
+  
+  // Función global para restaurar colores después de deseleccionar elementos
+  const restoreTypeColors = async () => {
+    if (colorByType && classifierRef.current && components) {
+      try {
+        await applyColorByType(true);
+        console.log('Colores por tipo restaurados después de deseleccionar');
+      } catch (error) {
+        console.warn('Error al restaurar colores por tipo:', error);
+      }
+    }
+  };
   
   // Función para cambiar entre modo 2D y 3D
   const toggleCameraMode = (mode: '2D' | '3D') => {
@@ -93,7 +109,7 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
             const size = box.getSize(new THREE.Vector3());
             
             // Posicionar cámara desde arriba
-            const height = Math.max(size.x, size.z) * 1.2; // Altura basada en el tamaño del modelo
+            const height = Math.max(size.x, size.z) * 1; // Altura basada en el tamaño del modelo
             
             // Rotación para alinear con el norte del proyecto
             // CONFIGURACIÓN: Ajusta este ángulo según la orientación de tu norte de proyecto
@@ -101,8 +117,8 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
             const northRotation = (-81.01 + 180) * (Math.PI / 180); // Actualmente: 180° (norte hacia abajo)
             
             // Calcular posición de cámara con rotación
-            const offsetX = Math.sin(northRotation) * height * 0.1;
-            const offsetZ = Math.cos(northRotation) * height * 0.1;
+            const offsetX = Math.sin(northRotation) * height * 0.001;
+            const offsetZ = Math.cos(northRotation) * height * 0.001;
             
             const cameraPosition = new THREE.Vector3(
               center.x + offsetX, 
@@ -118,22 +134,21 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
               true // animate
             );
             
-            // Aplicar rotación adicional para orientación del norte
-            // Esto rota la vista para alinear con el norte del proyecto
-            setTimeout(() => {
-              if (camera.three && camera.controls) {
-                camera.three.up.set(Math.sin(northRotation), 0, Math.cos(northRotation));
-                camera.three.updateProjectionMatrix();
-                // Forzar actualización de los controles con delta time
-                if (typeof camera.controls.update === 'function') {
-                  try {
-                    camera.controls.update(0.016); // ~60fps delta time
-                  } catch (e) {
-                    console.warn('No se pudo actualizar los controles:', e);
-                  }
+            // Para vista 2D cenital, mantener el vector up estándar (0,1,0)
+            // Esto asegura que la cámara esté completamente paralela al suelo
+            if (camera.three && camera.controls) {
+              // Vector up estándar para vista cenital perfecta
+              camera.three.up.set(0, 1, 0);
+              camera.three.updateProjectionMatrix();
+              // Forzar actualización de los controles con delta time
+              if (typeof camera.controls.update === 'function') {
+                try {
+                  camera.controls.update(0.016); // ~60fps delta time
+                } catch (e) {
+                  console.warn('No se pudo actualizar los controles:', e);
                 }
               }
-            }, 100);
+            }
             
             console.log('Cámara posicionada en vista cenital:', cameraPosition, 'mirando a:', target);
           } else {
@@ -224,6 +239,36 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
         classifierRef.current = components.get(OBC.Classifier);
         fragmentsRef.current = components.get(OBC.FragmentsManager);
         hiderRef.current = components.get(OBC.Hider);
+        
+        // Deshabilitar preselección (hover) para que no interfiera
+        try {
+          const highlighter = components.get(OBF.Highlighter);
+          highlighter.enabled = false;
+          console.log('ClassifierExample: Preselección por hover deshabilitada.');
+        } catch (error) {
+          console.warn('No se pudo deshabilitar el highlighter:', error);
+        }
+        
+        // Configurar el sistema de highlight con callback de restauración de colores
+        try {
+          const container = document.querySelector('.thatopen_viewer') as HTMLElement;
+          if (container) {
+            const worlds = components.get(OBC.Worlds);
+            if (worlds.list.size > 0) {
+              const world = worlds.list.values().next().value;
+              if (world) {
+                const fragments = components.get(OBC.FragmentsManager);
+                // Reconfigurar el sistema de highlight con el callback de restauración
+                setupHighlight(container, world, fragments, {
+                  onRestoreColors: restoreTypeColors
+                });
+                console.log('ClassifierExample: Sistema de highlight reconfigurado con restauración de colores.');
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('No se pudo reconfigurar el sistema de highlight:', error);
+        }
         
         // Guardar la posición inicial de la cámara también aquí
         const worlds = components.get(OBC.Worlds);
@@ -415,8 +460,8 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
       try {
         console.log("Inicializando clasificaciones por defecto...");
         
-        // Creamos las clasificaciones
-        //await classifier.byCategory();
+        // Crear clasificaciones siguiendo la documentación oficial
+        await classifier.byCategory();
         await classifier.byIfcBuildingStorey({ classificationName: "Levels" });
         
         console.log("Clasificaciones creadas:", Array.from(classifier.list.keys()));
@@ -447,6 +492,9 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
       }
     };
   }, [isReady, components]);
+  
+  // Configuración inicial eliminada - el modelo se carga con materiales originales
+  // La ocultación de techos se aplica solo al acceder a las plantas
 
   const resetVisibility = async () => {
     // Usar la referencia en lugar de obtenerlo cada vez
@@ -459,12 +507,226 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
     try {
       await hider.set(true);
       setSelectedGroup(null);
+      
+      // Aplicar el estado actual de techos después de mostrar todo
+      await toggleCeilingsVisibility(showCeilings);
+      
+      // No aplicar coloración automáticamente - se maneja desde handleIsolateGroup
+      console.log('Visibilidad reseteada - mostrando materiales originales');
     } catch (error) {
       console.error('Error al resetear visibilidad:', error);
     }
   };
 
+  const toggleCeilingsVisibility = async (visible: boolean) => {
+    const classifier = classifierRef.current;
+    const hider = hiderRef.current;
+    
+    if (!classifier || !hider) {
+      console.warn('Referencias no disponibles para toggleCeilingsVisibility');
+      return;
+    }
+    
+    try {
+      // Verificar que classifier.list exista
+      if (!classifier.list) {
+        console.warn('La lista de clasificación no está disponible');
+        return;
+      }
+      
+      // Usar el método oficial para obtener los fragmentos
+      const classificationMap = classifier.list.get('Categories');
+      if (!classificationMap) {
+        console.warn('Clasificación Category no encontrada');
+        return;
+      }
+      
+      const groupData = classificationMap.get('IFCCOVERING');
+      if (!groupData) {
+        console.log('Grupo IFCCOVERING no encontrado en clasificación Category');
+        return;
+      }
+      
+      console.log(`${visible ? 'Mostrando' : 'Ocultando'} elementos IFCCOVERING`);
+      
+      // Obtener el mapa de fragmentos para IFCCOVERING
+      // const coveringFragments = await groupData.get(); // No se usa directamente
+      
+      if (visible) {
+        // Mostrar techos: mostrar todo
+        await hider.set(true);
+        
+        // Reaplicar coloración si está activa
+        if (colorByType) {
+          await applyColorByType(true);
+        }
+      } else {
+        // Ocultar techos: usar isolate para mostrar todo EXCEPTO IFCCOVERING
+        const allFragments: { [modelId: string]: Set<number> } = {};
+        for (const [categoryName, categoryGroup] of classificationMap) {
+          if (categoryName !== 'IFCCOVERING') {
+            const categoryFragments = await categoryGroup.get();
+            for (const [modelId, elementIds] of Object.entries(categoryFragments)) {
+              if (!allFragments[modelId]) {
+                allFragments[modelId] = new Set();
+              }
+              for (const elementId of elementIds) {
+                allFragments[modelId].add(Number(elementId));
+              }
+            }
+          }
+        }
+        
+        // Aislar todo excepto IFCCOVERING (esto oculta los techos)
+        await hider.isolate(allFragments);
+        
+        // Reaplicar coloración si está activa
+        if (colorByType) {
+          await applyColorByType(true);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error al cambiar visibilidad de techos:', error);
+    }
+  };
+  
+  const handleCeilingsToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const checked = event.target.checked;
+    setShowCeilings(checked);
+    toggleCeilingsVisibility(checked);
+  };
+  
+  const elementColors: { [key: string]: THREE.Color } = {
+    'IFCCOLUMN': new THREE.Color('#F5E7C9'), // papaya whip (melocotón muy claro)
+    'IFCWALL': new THREE.Color('#FAB9F9'),   // rosa pálido
+    'IFCWALLSTANDARDCASE': new THREE.Color('#FDDDE6'),
+    'IFCBEAM': new THREE.Color('#DFFFE0'),   // verde muy pálido
+    'IFCSLAB': new THREE.Color('#FFFFFF'),   // azul glaciar
+    'IFCDOOR': new THREE.Color('#F5D490'),   // marrón vainilla claro
+    'IFCSTAIR': new THREE.Color('#EADAF6'),  // lavanda muy clara
+    'IFCRAILING': new THREE.Color('#FFF9CC'),// amarillo vainilla
+    'IFCFURNISHINGELEMENT': new THREE.Color('#F6E5F7'), // lila tenue
+    'IFCSPACE': new THREE.Color('#FFFFFF'),  // blanco
+  };
+  
+  // Variables para evitar ejecuciones múltiples
+  const [isApplyingColors, setIsApplyingColors] = useState(false);
+  const [isIsolatingGroup, setIsIsolatingGroup] = useState(false);
+  
+  const applyColorByType = async (enable: boolean) => {
+    // Evitar ejecuciones múltiples
+    if (isApplyingColors) {
+      console.log('applyColorByType ya en ejecución, saltando...');
+      return;
+    }
+    
+    const classifier = classifierRef.current;
+    const fragmentsManager = components?.get(OBC.FragmentsManager);
+    
+    if (!classifier || !fragmentsManager) {
+      console.warn('Referencias no disponibles para colorear por tipo');
+      return;
+    }
+    
+    setIsApplyingColors(true);
+    
+    try {
+      // Verificar que classifier.list exista
+      if (!classifier.list) {
+        console.warn('La lista de clasificación no está disponible');
+        return;
+      }
+      
+      // Usar el método oficial para obtener los fragmentos
+      const classificationMap = classifier.list.get('Categories');
+      if (!classificationMap) {
+        console.warn('Clasificación Category no encontrada');
+        return;
+      }
+      
+      if (enable) {
+        console.log('Aplicando colores por tipo de elemento...');
+        
+        // Iterar sobre cada tipo de elemento definido
+        for (const [ifcType, color] of Object.entries(elementColors)) {
+          const groupData = classificationMap.get(ifcType);
+          
+          if (groupData) {
+            try {
+              const fragments = await groupData.get();
+              
+              if (fragments && Object.keys(fragments).length > 0) {
+                // Aplicar color a cada fragmento del tipo
+                for (const [modelId, elementIds] of Object.entries(fragments)) {
+                  const model = fragmentsManager.list.get(modelId);
+                  if (model && elementIds instanceof Set) {
+                    for (const elementId of elementIds) {
+                      try {
+                        // Crear material con el color especificado
+                        const colorMaterial = {
+                          color: color,
+                          opacity: ifcType === 'IFCWALL' ? 0.4 : 1,
+                          transparent: ifcType === 'IFCSPACE',
+                          renderedFaces: 1 // Ambas caras
+                        };
+                        
+                        // Aplicar el material coloreado
+                        await model.highlight([elementId], colorMaterial);
+                      } catch (error) {
+                        // Silenciar errores individuales
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.warn(`Error al colorear ${ifcType}:`, error);
+            }
+          }
+        }
+        
+        console.log('Colores por tipo aplicados correctamente');
+      } else {
+        console.log('Restaurando colores originales...');
+        
+        // Solo resetear highlights si NO hay un nivel seleccionado
+        // Si hay nivel seleccionado, el aislamiento debe mantenerse
+        if (!selectedGroup) {
+          // Resetear todos los highlights para restaurar colores originales
+          for (const [, model] of fragmentsManager.list) {
+            try {
+              await model.resetHighlight();
+            } catch (error) {
+              // Silenciar errores individuales
+            }
+          }
+          console.log('Colores originales restaurados - sin nivel seleccionado');
+        } else {
+          console.log('Colores originales - manteniendo aislamiento de nivel');
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error al aplicar coloración por tipo:', error);
+    } finally {
+      setIsApplyingColors(false);
+    }
+  };
+  
+  const handleColorByTypeToggle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const checked = event.target.checked;
+    setColorByType(checked);
+    applyColorByType(checked);
+  };
+
   const handleIsolateGroup = async (classification: string, group: string) => {
+    // Evitar ejecuciones múltiples
+    if (isIsolatingGroup) {
+      console.log('handleIsolateGroup ya en ejecución, saltando...');
+      return;
+    }
+    
     // Usar las referencias en lugar de obtenerlos cada vez
     const classifier = classifierRef.current;
     const hider = hiderRef.current;
@@ -474,13 +736,29 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
       return;
     }
     
+    setIsIsolatingGroup(true);
+    
     // Toggle: Si hacemos clic en el mismo nivel ya seleccionado, mostrar todo
     if (selectedGroup?.classification === classification && selectedGroup?.group === group) {
       try {
-        await hider.set(true); // Mostrar todo
+        // PASO 1: Mostrar todo (operación atómica)
+        await hider.set(true);
+        
+        // PASO 2: Actualizar estado (síncrono)
         setSelectedGroup(null);
+        setColorByType(false);
+        
+        console.log('Visibilidad reseteada - mostrando todo el modelo');
+        
+        // PASO 3: Ocultar techos si es necesario
+        if (!showCeilings) {
+          await toggleCeilingsVisibility(false);
+        }
+        
       } catch (error) {
         console.error('Error al resetear visibilidad:', error);
+      } finally {
+        setIsIsolatingGroup(false);
       }
       return;
     }
@@ -510,14 +788,60 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
       // Obtener el mapa de fragmentos para este nivel
       const levelFragments = await groupData.get();
       
-      // Usar la API de Hider para aislar los fragmentos del nivel
-      // Esta es la manera recomendada por ThatOpen
+      // PASO 1: Aislar el nivel (operación atómica)
       await hider.isolate(levelFragments);
       
+      // PASO 2: Actualizar estado (síncrono)
       setSelectedGroup({ classification, group });
+      setColorByType(true);
+      
       console.log(`Grupo ${group} aislado correctamente`);
+      
+      // PASO 3: Aplicar coloración inmediatamente
+      await applyColorByType(true);
+      console.log('Coloración aplicada correctamente');
+      
+      // Ocultar techos del nivel seleccionado si está configurado
+      if (!showCeilings) {
+        try {
+          // Obtener IFCCOVERING del nivel aislado y ocultarlo
+          const categoryClassificationMap = classifier.list.get('Categories');
+          if (categoryClassificationMap) {
+            const coveringGroupData = categoryClassificationMap.get('IFCCOVERING');
+            if (coveringGroupData) {
+              const allCoveringFragments = await coveringGroupData.get();
+              
+              // Filtrar solo los IFCCOVERING que pertenecen al nivel seleccionado
+              const levelCoveringFragments: { [modelId: string]: Set<number> } = {};
+              for (const [modelId, levelElementIds] of Object.entries(levelFragments)) {
+                if (allCoveringFragments[modelId]) {
+                  const intersection = new Set<number>();
+                  for (const elementId of levelElementIds) {
+                    if (allCoveringFragments[modelId].has(Number(elementId))) {
+                      intersection.add(Number(elementId));
+                    }
+                  }
+                  if (intersection.size > 0) {
+                    levelCoveringFragments[modelId] = intersection;
+                  }
+                }
+              }
+              
+              // Ocultar solo los techos del nivel seleccionado
+              if (Object.keys(levelCoveringFragments).length > 0) {
+                await hider.set(false, levelCoveringFragments);
+                console.log('Techos del nivel seleccionado ocultados');
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('Error al ocultar techos del nivel:', error);
+        }
+      }
     } catch (error) {
       console.error('Error al aislar nivel:', error);
+    } finally {
+      setIsIsolatingGroup(false);
     }
   };
 
@@ -629,11 +953,107 @@ const ClassifierExample: React.FC<{ components: OBC.Components | null }> = ({ co
             width: '100%',
             textAlign: 'left',
             fontWeight: 'normal',
-            fontSize: '14px'
+            fontSize: '14px',
+            marginBottom: '10px'
           }}
         >
           Tot 
         </button>
+        
+        {/* Checkbox para mostrar/ocultar techos */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '8px 0',
+          fontSize: '14px'
+        }}>
+          <input
+            type="checkbox"
+            id="show-ceilings"
+            checked={showCeilings}
+            onChange={handleCeilingsToggle}
+            style={{
+              cursor: 'pointer'
+            }}
+          />
+          <label 
+            htmlFor="show-ceilings"
+            style={{
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            Mostrar techos
+          </label>
+        </div>
+        
+        {/* Checkbox para colorear por tipo */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '8px 0',
+          fontSize: '14px'
+        }}>
+          <input
+            type="checkbox"
+            id="color-by-type"
+            checked={colorByType}
+            onChange={handleColorByTypeToggle}
+            style={{
+              cursor: 'pointer'
+            }}
+          />
+          <label 
+            htmlFor="color-by-type"
+            style={{
+              cursor: 'pointer',
+              userSelect: 'none'
+            }}
+          >
+            Colorear por tipo
+          </label>
+        </div>
+        
+        {/* Leyenda de colores cuando está activado */}
+        {colorByType && (
+          <div style={{
+            marginTop: '10px',
+            padding: '8px',
+            backgroundColor: '#f9f9f9',
+            borderRadius: '4px',
+            fontSize: '12px'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '6px' }}>Leyenda de colores:</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#FF8C00', borderRadius: '2px' }}></div>
+                <span>Columnas</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#FF69B4', borderRadius: '2px' }}></div>
+                <span>Muros</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#32CD32', borderRadius: '2px' }}></div>
+                <span>Vigas</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#87CEEB', borderRadius: '2px' }}></div>
+                <span>Losas</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#8B4513', borderRadius: '2px' }}></div>
+                <span>Puertas</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '12px', height: '12px', backgroundColor: '#00CED1', borderRadius: '2px' }}></div>
+                <span>Ventanas</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Panel Section: Groupings */}

@@ -8,6 +8,7 @@ console.log("Panel cargado");
 export type HighlightHandlers = {
   onItemSelected?: () => void;
   onItemDeselected?: () => void;
+  onRestoreColors?: () => Promise<void>; // Callback para restaurar colores por tipo
 };
 
 // Store the currently selected model and ID
@@ -105,13 +106,13 @@ export function setupHighlight(
     transparent: false,
   };
 
-  // Material azul claro para hover/preselección
-  const hoverMaterial: FRAGS.MaterialDefinition = {
-    color: new THREE.Color("lightblue"),
-    renderedFaces: FRAGS.RenderedFaces.TWO,
-    opacity: 0.8,
-    transparent: true,
-  };
+  // MATERIAL DESHABILITADO: Solo se usaba para hover/preselección
+  // const hoverMaterial: FRAGS.MaterialDefinition = {
+  //   color: new THREE.Color("lightblue"),
+  //   renderedFaces: FRAGS.RenderedFaces.TWO,
+  //   opacity: 0.8,
+  //   transparent: true,
+  // };
 
   // Función de raycast para múltiples modelos
   const raycast = async (data: {
@@ -153,12 +154,11 @@ export function setupHighlight(
     await selectedModel.resetHighlight([localId]);
   };
   
-  const highlightHover = async () => {
-    if (!hoveredLocalId || !hoveredModel) return;
-    await hoveredModel.highlight([hoveredLocalId], hoverMaterial);
-  };
-  
-  
+  // FUNCIÓN DESHABILITADA: Solo se usaba para hover
+  // const highlightHover = async () => {
+  //   if (!hoveredModel || hoveredLocalId === null) return;
+  //   await hoveredModel.highlight([hoveredLocalId], hoverMaterial);
+  // };
   
   // Reset highlights in all models when needed
   const resetAllHighlights = async () => {
@@ -169,53 +169,267 @@ export function setupHighlight(
     await Promise.all(promises);
   };
 
-
-  
-  // Event listener para hover (pointermove)
-  container.addEventListener("pointermove", async (event) => {
-    mouse.x = event.clientX;
-    mouse.y = event.clientY;
+  // Función para restaurar el color por tipo de un elemento específico
+  const restoreElementTypeColor = async (model: any, elementLocalId: number, modelId?: string) => {
+    if (!model || !elementLocalId) return;
     
-    const result = await raycast({
-      camera: world.camera.three,
-      mouse,
-      dom: world.renderer!.three.domElement!,
-    });
-    
-    // Determinar si necesitamos cambiar el hover
-    const newHoveredElement = result && result.model ? 
-      { localId: result.localId, model: result.model } : null;
-    
-    const currentHoveredElement = hoveredLocalId && hoveredModel ? 
-      { localId: hoveredLocalId, model: hoveredModel } : null;
-    
-    // Si el elemento hover ha cambiado
-    if (!areElementsEqual(newHoveredElement, currentHoveredElement)) {
-      // Resetear solo hovers específicos para evitar conflictos con selección
-      if (currentHoveredElement) {
-        await currentHoveredElement.model.resetHighlight([currentHoveredElement.localId]);
-      }
-      hoveredLocalId = null;
-      hoveredModel = null;
+    try {
+      console.log(`💥 Restaurando color específico para elemento ${elementLocalId} del modelo ${modelId || 'unknown'}`);
       
-      // Aplicar nuevo hover si existe y no es el elemento seleccionado
-      if (newHoveredElement && !areElementsEqual(newHoveredElement, { localId, model: selectedModel })) {
-        hoveredLocalId = newHoveredElement.localId;
-        hoveredModel = newHoveredElement.model;
-        await highlightHover();
-        //console.log(`Nuevo hover aplicado a elemento ${hoveredLocalId}`);
+      // Resetear el highlight para eliminar el dorado
+      await model.resetHighlight([elementLocalId]);
+      
+      // Definición de colores por tipo IFC
+      const elementColors: { [key: string]: THREE.Color } = {
+        'IFCCOLUMN': new THREE.Color('#F5E7C9'), // melocotón claro
+        'IFCWALL': new THREE.Color('#FAB9F9'),   // rosa pálido
+        'IFCWALLSTANDARDCASE': new THREE.Color('#FDDDE6'), // rosa más claro
+        'IFCBEAM': new THREE.Color('#DFFFE0'),   // verde muy pálido
+        'IFCSLAB': new THREE.Color('#FFFFFF'),   // blanco
+        'IFCDOOR': new THREE.Color('#F5D490'),   // marrón vainilla claro
+        'IFCSTAIR': new THREE.Color('#EADAF6'),  // lavanda muy clara
+        'IFCRAILING': new THREE.Color('#FFF9CC'),// amarillo vainilla
+        'IFCFURNISHINGELEMENT': new THREE.Color('#F6E5F7'), // lila tenue
+        'IFCSPACE': new THREE.Color('#FFFFFF'),  // blanco
+      };
+      
+      // Determinar el tipo IFC del elemento para aplicar el color correcto
+      if (!_fragments) {
+        console.warn('❌ _fragments no disponible');
+        return;
       }
+      
+      const components = _fragments.components;
+      if (!components) {
+        console.warn('❌ components no disponible');
+        return;
+      }
+      
+      const classifier = components.get(OBC.Classifier);
+      if (!classifier || !classifier.list) {
+        console.warn('❌ classifier no disponible');
+        return;
+      }
+      
+      // Obtener la clasificación por categorías
+      const categoriesMap = classifier.list.get('Categories');
+      if (!categoriesMap) {
+        console.log('⚠️ Categorías IFC no encontradas, usando color por defecto');
+        // Fallback al color rosa si no se puede determinar el tipo
+        await model.highlight([elementLocalId], {
+          color: new THREE.Color('#FAB9F9'), // Rosa pálido (color por defecto)
+          opacity: 0.4,
+          transparent: true,
+          renderedFaces: 1
+        });
+        return;
+      }
+      
+      let elementTypeFound = false;
+      let usedColor = null;
+      
+      // Buscar en qué tipo IFC está clasificado el elemento
+      for (const [ifcType, color] of Object.entries(elementColors)) {
+        const groupData = categoriesMap.get(ifcType);
+        if (!groupData) continue;
+        
+        try {
+          const fragments = await groupData.get();
+          
+          // Comprobar si el elemento pertenece a este tipo IFC
+          for (const [fragmentModelId, elementIds] of Object.entries(fragments)) {
+            // Usar el modelId proporcionado o verificar todos los modelos
+            if ((modelId && fragmentModelId !== modelId) || !elementIds) continue;
+            
+            if (elementIds instanceof Set && elementIds.has(elementLocalId)) {
+              console.log(`✅ Elemento ${elementLocalId} es de tipo ${ifcType}`);
+              
+              // Determinar opacidad y transparencia según tipo
+              const isWall = ifcType === 'IFCWALL' || ifcType === 'IFCWALLSTANDARDCASE';
+              const isSpace = ifcType === 'IFCSPACE';
+              
+              // Aplicar el color correspondiente al tipo IFC
+              await model.highlight([elementLocalId], {
+                color: color,
+                opacity: isWall ? 0.4 : 1,  // Muros con transparencia
+                transparent: isWall || isSpace, // Espacios también transparentes
+                renderedFaces: 1
+              });
+              
+              elementTypeFound = true;
+              usedColor = ifcType;
+              break;
+            }
+          }
+          
+          if (elementTypeFound) break;
+        } catch (error) {
+          console.warn(`Error al verificar tipo ${ifcType}:`, error);
+        }
+      }
+      
+      // Si no se encontró el tipo, aplicar color genérico
+      if (!elementTypeFound) {
+        console.log('⚠️ No se encontró el tipo IFC del elemento, usando color por defecto');
+        await model.highlight([elementLocalId], {
+          color: new THREE.Color('#CCCCCC'), // Gris claro como fallback
+          opacity: 0.7,
+          transparent: true,
+          renderedFaces: 1
+        });
+      } else {
+        console.log(`✨ Color de tipo ${usedColor} aplicado al elemento ${elementLocalId}`);
+      }
+    } catch (error) {
+      console.warn('Error al restaurar color del elemento:', error);
+    }
+  };
+  
+  // Función para reaplicar el color por tipo a un elemento específico
+  const reapplyTypeColorForElement = async (modelId: string, elementLocalId: number) => {
+    console.log(`🔄 Iniciando reaplicación de color para elemento ${modelId}:${elementLocalId}`);
+    
+    if (!_fragments) {
+      console.warn('❌ _fragments no disponible');
+      return;
     }
     
-    await fragments?.core.update(true);
-  });
-  
-  // Función helper para comparar elementos
-  function areElementsEqual(elem1: any, elem2: any) {
-    if (!elem1 && !elem2) return true;
-    if (!elem1 || !elem2) return false;
-    return elem1.localId === elem2.localId && elem1.model === elem2.model;
-  }
+    try {
+      const components = _fragments.components;
+      if (!components) {
+        console.warn('❌ components no disponible');
+        return;
+      }
+      
+      const classifier = components.get(OBC.Classifier);
+      const fragmentsManager = components.get(OBC.FragmentsManager);
+      
+      if (!classifier || !classifier.list || !fragmentsManager) {
+        console.warn('❌ classifier o fragmentsManager no disponibles');
+        return;
+      }
+      
+      const classificationMap = classifier.list.get('Category');
+      if (!classificationMap) {
+        console.warn('❌ classificationMap Category no encontrada');
+        return;
+      }
+      
+      console.log('✅ Todos los componentes disponibles, buscando tipo IFC...');
+      
+      // Estrategia simplificada: aplicar colores por tipo a TODOS los elementos
+      // y dejar que el sistema maneje automáticamente el elemento correcto
+      console.log('🎨 Reaplicando colores por tipo globalmente...');
+      
+      // Llamar a la función de aplicación de colores por tipo del ClassifierExample
+      if (handlers?.onRestoreColors) {
+        await handlers.onRestoreColors();
+        console.log('✨ Colores por tipo reaplicados globalmente');
+        return;
+      }
+      
+      // Definir colores por tipo (usando nombres que podrían estar en el classifier)
+      const elementColors: { [key: string]: THREE.Color } = {
+        'IFCCOLUMN': new THREE.Color('#F5E7C9'), // papaya whip (melocotón muy claro)
+        'IFCWALL': new THREE.Color('#FAB9F9'),   // rosa pálido
+        'IFCWALLSTANDARDCASE': new THREE.Color('#FDDDE6'),
+        'IFCBEAM': new THREE.Color('#DFFFE0'),   // verde muy pálido
+        'IFCSLAB': new THREE.Color('#FFFFFF'),   // azul glaciar
+        'IFCDOOR': new THREE.Color('#F5D490'),   // marrón vainilla claro
+        'IFCSTAIR': new THREE.Color('#EADAF6'),  // lavanda muy clara
+        'IFCRAILING': new THREE.Color('#FFF9CC'),// amarillo vainilla
+        'IFCFURNISHINGELEMENT': new THREE.Color('#F6E5F7'), // lila tenue
+        'IFCSPACE': new THREE.Color('#FFFFFF'),  // blanco
+        // Agregar posibles variantes
+        'IfcWall': new THREE.Color('#FAB9F9'),
+        'IfcColumn': new THREE.Color('#F5E7C9'),
+        'IfcBeam': new THREE.Color('#DFFFE0'),
+        'IfcSlab': new THREE.Color('#FFFFFF'),
+        'IfcDoor': new THREE.Color('#F5D490'),
+      };
+      
+      // Buscar el tipo IFC del elemento - primero intentar con los tipos definidos
+      for (const [ifcType, color] of Object.entries(elementColors)) {
+        console.log(`🔍 Verificando tipo ${ifcType}...`);
+        const groupData = classificationMap.get(ifcType);
+        if (groupData) {
+          const fragments = await groupData.get();
+          console.log(`📊 Fragmentos para ${ifcType}:`, fragments ? Object.keys(fragments) : 'null');
+          
+          if (fragments && fragments[modelId]) {
+            console.log(`📊 Elementos en modelo ${modelId} para ${ifcType}:`, fragments[modelId].size);
+            
+            if (fragments[modelId].has(elementLocalId)) {
+              console.log(`✅ Elemento ${elementLocalId} encontrado en tipo ${ifcType}`);
+              
+              // Encontrado el tipo, aplicar su color
+              const model = fragmentsManager.list.get(modelId);
+              if (model) {
+                const colorMaterial = {
+                  color: color,
+                  opacity: ifcType.includes('WALL') ? 0.4 : 1,
+                  transparent: ifcType.includes('SPACE'),
+                  renderedFaces: 1
+                };
+                await model.highlight([elementLocalId], colorMaterial);
+                console.log(`✨ Color por tipo ${ifcType} reaplicado a elemento ${modelId}:${elementLocalId}`);
+              } else {
+                console.warn(`❌ Modelo ${modelId} no encontrado en fragmentsManager`);
+              }
+              return; // Salir una vez encontrado
+            }
+          }
+        } else {
+          console.log(`⚪ No hay groupData para ${ifcType}`);
+        }
+      }
+      
+      // Si no se encuentra en los tipos predefinidos, buscar en todas las claves disponibles
+      console.log('🔍 No encontrado en tipos predefinidos, buscando en todas las claves...');
+      for (const [availableKey] of classificationMap) {
+        const groupData = classificationMap.get(availableKey);
+        if (groupData) {
+          const fragments = await groupData.get();
+          if (fragments && fragments[modelId] && fragments[modelId].has(elementLocalId)) {
+            console.log(`✅ Elemento ${elementLocalId} encontrado en clave ${availableKey}`);
+            
+            // Aplicar color por defecto o basado en el tipo
+            const model = fragmentsManager.list.get(modelId);
+            if (model) {
+              let color = new THREE.Color('#CCCCCC'); // Color por defecto
+              
+              // Intentar determinar color basado en el nombre de la clave
+              if (availableKey.toLowerCase().includes('wall')) {
+                color = new THREE.Color('#FAB9F9');
+              } else if (availableKey.toLowerCase().includes('column')) {
+                color = new THREE.Color('#F5E7C9');
+              } else if (availableKey.toLowerCase().includes('beam')) {
+                color = new THREE.Color('#DFFFE0');
+              } else if (availableKey.toLowerCase().includes('slab')) {
+                color = new THREE.Color('#FFFFFF');
+              } else if (availableKey.toLowerCase().includes('door')) {
+                color = new THREE.Color('#F5D490');
+              }
+              
+              const colorMaterial = {
+                color: color,
+                opacity: availableKey.toLowerCase().includes('wall') ? 0.4 : 1,
+                transparent: availableKey.toLowerCase().includes('space'),
+                renderedFaces: 1
+              };
+              await model.highlight([elementLocalId], colorMaterial);
+              console.log(`✨ Color genérico aplicado para clave ${availableKey} a elemento ${modelId}:${elementLocalId}`);
+            }
+            return;
+          }
+        }
+      }
+      
+      console.log(`No se encontró tipo IFC para elemento ${modelId}:${elementLocalId}`);
+    } catch (error) {
+      console.warn(`Error al reaplicar color por tipo a elemento ${modelId}:${elementLocalId}:`, error);
+    }
+  };
   
 
   
@@ -238,22 +452,65 @@ export function setupHighlight(
         return;
       }
       
-      // Resetear solo la selección anterior (no el hover)
-      if (selectedModel && localId) {
-        await selectedModel.resetHighlight([localId]);
+      // Guardar elemento actual como anterior ANTES de restaurar
+      const oldSelectedModel = selectedModel;
+      const oldSelectedModelId = selectedModelId;
+      const oldLocalId = localId;
+      
+      // Restaurar color del elemento anterior si existe
+      if (oldSelectedModel && oldLocalId) {
+        try {
+          await restoreElementTypeColor(oldSelectedModel, oldLocalId, oldSelectedModelId || undefined);
+        } catch (error) {
+          console.warn('Error al restaurar color del elemento anterior:', error);
+        }
       }
       
-      // Resetear solo hovers específicos antes de seleccionar (no usar resetAllHovers aquí)
+      // Resetear solo hovers específicos antes de seleccionar - sin flash
       if (hoveredLocalId && hoveredModel) {
-        await hoveredModel.resetHighlight([hoveredLocalId]);
+        try {
+          await hoveredModel.resetHighlight([hoveredLocalId]);
+        } catch (error) {
+          // Silenciar errores de hover
+        }
       }
       hoveredLocalId = null;
       hoveredModel = null;
       
+      // Variables del elemento anterior ya no se necesitan con la nueva lógica
+      
       // Guardar referencia al modelo y al elemento seleccionados
       selectedModel = result.model;
-      selectedModelId = result.model.id || 'unknown';
       localId = result.localId;
+      
+      // Debug: Mostrar todas las propiedades del modelo para encontrar el ID correcto
+      console.log('🔍 Propiedades del modelo:', Object.keys(result.model));
+      console.log('🔍 result.model.id:', result.model.id);
+      console.log('🔍 result.model.uuid:', result.model.uuid);
+      console.log('🔍 result.model.name:', result.model.name);
+      console.log('🔍 result completo:', result);
+      
+      // Estrategia simplificada: usar directamente el primer modelo disponible
+      // ya que el sistema de información funciona correctamente
+      const components = _fragments.components;
+      const fragmentsManager = components?.get(OBC.FragmentsManager);
+      
+      if (fragmentsManager && fragmentsManager.list.size > 0) {
+        // Tomar el primer modelo disponible como fallback
+        const firstModel = fragmentsManager.list.values().next().value;
+        const firstModelId = fragmentsManager.list.keys().next().value;
+        
+        selectedModelId = firstModelId;
+        selectedModel = firstModel;
+        
+        console.log(`🏷️ Usando modelo: ${selectedModelId}`);
+      }
+      
+      // Fallback si no se encuentra
+      if (!selectedModelId) {
+        selectedModelId = result.model.id || result.model.uuid || result.model.name || result.modelId || 'unknown';
+        console.log('⚠️ Usando fallback para modelId:', selectedModelId);
+      }
       
       // Actualizar variables globales para las funciones de información
       _model = selectedModel;
@@ -261,10 +518,15 @@ export function setupHighlight(
       _modelId = selectedModelId;
       
       // Debug: Mostrar información sobre el modelo seleccionado
-      console.log(`Modelo seleccionado: ${selectedModelId}`, selectedModel);
+      console.log(`🏷️ Modelo seleccionado ID final: ${selectedModelId}`);
+      console.log('📊 Modelo completo:', selectedModel);
       
-      // Aplicar highlight de selección
-      await highlight();
+      // Aplicar highlight de selección - optimizado
+      try {
+        await highlight();
+      } catch (error) {
+        console.warn('Error al aplicar highlight de selección:', error);
+      }
       
       // Notificar cambio de selección
       notifySelectionChange();
@@ -273,13 +535,24 @@ export function setupHighlight(
       handlers?.onItemSelected?.();
       logSelectedInfo();
     } else {
-      // Solo deseleccionar si hacemos clic en vacío
+      // Solo deseleccionar si hacemos clic en vacío - optimizado
       if (selectedModel && localId) {
-        await selectedModel.resetHighlight([localId]);
+        try {
+          // Restaurar color del elemento que se va a deseleccionar
+          await restoreElementTypeColor(selectedModel, localId, selectedModelId || undefined);
+        } catch (error) {
+          console.warn('Error al deseleccionar:', error);
+        }
+        
         // También limpiar cualquier hover residual
         if (hoveredLocalId && hoveredModel) {
-          await hoveredModel.resetHighlight([hoveredLocalId]);
+          try {
+            await hoveredModel.resetHighlight([hoveredLocalId]);
+          } catch (error) {
+            // Silenciar errores de hover
+          }
         }
+        
         selectedModel = null;
         selectedModelId = null;
         localId = null;
@@ -289,6 +562,8 @@ export function setupHighlight(
         hoveredLocalId = null;
         hoveredModel = null;
         
+        // Variables del elemento anterior ya no se usan
+        
         // Notificar cambio de selección (deseleccionado)
         notifySelectionChange();
         
@@ -296,8 +571,8 @@ export function setupHighlight(
         console.log('Elemento deseleccionado');
       }
     }
-    promises.push(fragments?.core.update(true));
-    Promise.all(promises);
+    
+    await fragments?.core.update(true);
   });
 
   // Devuelve funciones útiles si se quieren usar desde fuera
@@ -305,6 +580,7 @@ export function setupHighlight(
     highlight,
     resetHighlight,
     resetAllHighlights,
+    restoreElementTypeColor,
     getSelectedId: () => localId,
     getSelectedModelId: () => selectedModelId,
   };

@@ -460,7 +460,7 @@ const FMPage: React.FC = () => {
       // Esperar un poco si el modelo se acaba de cambiar
       if (edificio !== selectedBuilding) {
         console.log('⏳ Esperando a que se cargue el nuevo modelo...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
 
       // Buscar los elementos por GUID en todos los modelos cargados
